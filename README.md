@@ -1,0 +1,223 @@
+# OpenCode on DGX Spark
+
+Run [OpenCode](https://opencode.ai) with local LLMs on NVIDIA DGX Spark using llama.cpp.
+
+This repository provides scripts to set up a complete local AI coding assistant environment on DGX Spark hardware, using MiniMax-M2.1 as the underlying model.
+
+## Overview
+
+- **Hardware**: NVIDIA DGX Spark with GB10 GPU (128GB unified memory)
+- **Model**: [MiniMax-M2.1](https://huggingface.co/unsloth/MiniMax-M2.1-GGUF) - 456B MoE (21B active), optimized for coding and agentic tasks
+- **Quantization**: UD-Q2_K_XL (~86GB) - fits comfortably in single DGX Spark
+- **Runtime**: [llama.cpp](https://github.com/ggml-org/llama.cpp) with CUDA backend
+- **Frontend**: [OpenCode](https://opencode.ai) - AI coding assistant CLI
+
+## Quick Start
+
+```bash
+# Clone this repo
+git clone https://github.com/rick-stevens-ai/OpenCode-on-SPARK.git
+cd OpenCode-on-SPARK
+
+# Run full setup (download model, install OpenCode, configure, launch)
+./setup-opencode-minimax.sh
+
+# Once complete, start coding!
+opencode
+```
+
+## What the Setup Script Does
+
+1. **Downloads MiniMax-M2.1 UD-Q2_K_XL** (~86GB, 2 files) from HuggingFace
+   - Supports resume if interrupted
+   - Verifies file integrity
+
+2. **Installs OpenCode** if not already present
+
+3. **Generates configuration** (`~/.config/opencode/opencode.json`)
+   - Configures llama.cpp as the provider
+   - Sets optimal parameters for MiniMax-M2.1
+
+4. **Launches llama-server** with appropriate settings
+   - GPU acceleration enabled
+   - Jinja templates for proper chat formatting
+   - 8K context window
+
+## Usage
+
+```bash
+# Full setup (first time)
+./setup-opencode-minimax.sh
+
+# Check status
+./setup-opencode-minimax.sh --status
+
+# Download only (no server launch)
+./setup-opencode-minimax.sh --download-only
+
+# Launch server only (after download)
+./setup-opencode-minimax.sh --launch-only
+
+# Test inference
+./setup-opencode-minimax.sh --test
+```
+
+## Requirements
+
+### Hardware
+- NVIDIA DGX Spark (or similar with 96GB+ GPU memory)
+- GB10 GPU with compute capability 12.1
+
+### Software
+- Ubuntu 22.04+ or similar Linux
+- CUDA 12.0+
+- [llama.cpp](https://github.com/ggml-org/llama.cpp) built with CUDA support
+- curl, wget, jq
+
+### Building llama.cpp
+
+If you don't have llama.cpp built:
+
+```bash
+git clone https://github.com/ggml-org/llama.cpp.git
+cd llama.cpp
+
+# Build with CUDA (GB10 requires specific flags)
+CUDAHOSTCXX=/usr/bin/g++-12 cmake -B build \
+  -DGGML_CUDA=ON \
+  -DGGML_RPC=ON \
+  -DGGML_CUDA_F16=ON \
+  -DCMAKE_CUDA_HOST_COMPILER=/usr/bin/g++-12
+
+cmake --build build -j$(nproc)
+```
+
+## Model Information
+
+### MiniMax-M2.1
+
+| Property | Value |
+|----------|-------|
+| Architecture | Mixture of Experts (MoE) |
+| Total Parameters | 456B |
+| Active Parameters | 21B |
+| Quantization | UD-Q2_K_XL |
+| Size on Disk | ~86GB |
+| Context Length | Up to 1M tokens |
+| License | Modified-MIT |
+
+**Optimized for:**
+- Multi-language code generation
+- Tool use and function calling
+- Long-horizon planning
+- Agentic workflows
+
+### Performance on DGX Spark
+
+| Metric | Value |
+|--------|-------|
+| Inference Speed | ~30-35 tokens/second |
+| Memory Usage | ~86GB of 128GB |
+| Startup Time | ~2-3 minutes |
+
+## Configuration
+
+The setup script creates `~/.config/opencode/opencode.json`:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "llama-cpp": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "MiniMax-M2.1 (llama.cpp)",
+      "options": {
+        "baseURL": "http://localhost:8080/v1"
+      },
+      "models": {
+        "minimax-m2.1": {
+          "name": "MiniMax-M2.1 UD-Q2_K_XL",
+          "tools": true,
+          "temperature": 1.0,
+          "topP": 0.95
+        }
+      }
+    }
+  },
+  "model": "llama-cpp/minimax-m2.1"
+}
+```
+
+### Customizing
+
+You can modify the configuration for different settings:
+
+```bash
+# Change default model
+opencode config set model llama-cpp/minimax-m2.1
+
+# Use different context size (edit script or launch manually)
+llama-server -m ~/models/minimax-m2.1/MiniMax-M2.1-UD-Q2_K_XL-00001-of-00002.gguf \
+  --ctx-size 16384 \
+  --n-gpu-layers 99 \
+  --jinja
+```
+
+## Troubleshooting
+
+### Server won't start
+
+Check the log file:
+```bash
+tail -100 /tmp/llama-server-minimax-m2.1.log
+```
+
+### Out of memory
+
+The UD-Q2_K_XL quantization requires ~86GB. If you have less memory, try a smaller quantization:
+- `UD-IQ2_XXS` (~50GB)
+- `UD-IQ1_M` (~40GB)
+
+### Slow inference
+
+Ensure GPU layers are enabled:
+```bash
+# Check GPU usage
+nvidia-smi
+
+# Verify all layers on GPU
+grep "offloading" /tmp/llama-server-minimax-m2.1.log
+```
+
+### OpenCode can't connect
+
+Verify the server is running:
+```bash
+curl http://localhost:8080/health
+```
+
+## Alternative Models
+
+The setup script is configured for MiniMax-M2.1, but you can adapt it for other models:
+
+| Model | Size | Notes |
+|-------|------|-------|
+| Qwen3-Coder-30B-A3B | ~20GB | Smaller, faster, good for coding |
+| DeepSeek-V3 | ~400GB | Requires multi-node RPC |
+| Llama-3.1-70B | ~40GB | General purpose |
+
+## Related Projects
+
+- [spark-multi-node](https://github.com/rick-stevens-ai/spark-multi-node) - Multi-node inference scripts for DGX Spark
+- [llama.cpp](https://github.com/ggml-org/llama.cpp) - LLM inference engine
+- [OpenCode](https://github.com/sst/opencode) - AI coding assistant
+
+## License
+
+MIT License - see [LICENSE](LICENSE)
+
+## Acknowledgments
+
+- [Unsloth](https://github.com/unsloth/unsloth) for optimized GGUF quantizations
+- [MiniMax](https://www.minimax.io/) for releasing M2.1 to open source
+- [ggml-org](https://github.com/ggml-org) for llama.cpp
