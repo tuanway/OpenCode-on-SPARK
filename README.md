@@ -28,20 +28,32 @@ opencode
 
 ## What the Setup Script Does
 
+The script automates the entire setup process:
+
 1. **Downloads MiniMax-M2.1 UD-Q2_K_XL** (~86GB, 2 files) from HuggingFace
    - Supports resume if interrupted
    - Verifies file integrity
 
-2. **Installs OpenCode** if not already present
+2. **Builds llama.cpp with CUDA support** (if not already built)
+   - Automatically detects CUDA installation
+   - Finds compatible g++ compiler (g++-13, g++-12, or g++)
+   - Configures with CUDA, RPC, and FP16 support
+   - Compiles with all CPU cores
 
-3. **Generates configuration** (`~/.config/opencode/opencode.json`)
+3. **Installs OpenCode** if not already present
+   - Downloads from official source (opencode.ai)
+   - Automatically adds to PATH in ~/.zshrc or ~/.bashrc
+   - Detects installation in ~/.opencode/bin or ~/.local/bin
+
+4. **Generates configuration** (`~/.config/opencode/opencode.json`)
    - Configures llama.cpp as the provider
-   - Sets optimal parameters for MiniMax-M2.1
+   - Sets up tool calling support
+   - Compatible with OpenCode 1.1.15+
 
-4. **Launches llama-server** with appropriate settings
-   - GPU acceleration enabled
+5. **Launches llama-server** with optimal settings
+   - GPU acceleration (all layers offloaded)
    - Jinja templates for proper chat formatting
-   - 8K context window
+   - **128K context window** (131,072 tokens)
 
 ## Usage
 
@@ -65,32 +77,22 @@ opencode
 ## Requirements
 
 ### Hardware
-- NVIDIA DGX Spark (or similar with 96GB+ GPU memory)
-- GB10 GPU with compute capability 12.1
+- NVIDIA GPU with 85GB+ VRAM (tested on DGX Spark GB10)
+- ~90GB disk space for model
+- Multi-core CPU for faster compilation
 
-### Software
+### Software (automatically checked/installed by script)
 - Ubuntu 22.04+ or similar Linux
-- CUDA 12.0+
-- [llama.cpp](https://github.com/ggml-org/llama.cpp) built with CUDA support
-- curl, wget, jq
+- CUDA 12.0+ or 13.0+
+- cmake, g++, git, wget
 
-### Building llama.cpp
+The script will automatically:
+- Detect and use your CUDA installation
+- Find a compatible g++ compiler (g++-13, g++-12, or g++)
+- Clone and build llama.cpp with CUDA support
+- Install OpenCode CLI
 
-If you don't have llama.cpp built:
-
-```bash
-git clone https://github.com/ggml-org/llama.cpp.git
-cd llama.cpp
-
-# Build with CUDA (GB10 requires specific flags)
-CUDAHOSTCXX=/usr/bin/g++-12 cmake -B build \
-  -DGGML_CUDA=ON \
-  -DGGML_RPC=ON \
-  -DGGML_CUDA_F16=ON \
-  -DCMAKE_CUDA_HOST_COMPILER=/usr/bin/g++-12
-
-cmake --build build -j$(nproc)
-```
+**No manual building required!**
 
 ## Model Information
 
@@ -150,16 +152,25 @@ The setup script creates `~/.config/opencode/opencode.json`:
 
 ### Customizing
 
-You can modify the configuration for different settings:
+The script uses 128K context by default. To change it, edit `CTX_SIZE` in the script:
 
 ```bash
-# Change default model
-opencode config set model llama-cpp/minimax-m2.1
+# Edit setup-opencode-minimax.sh
+# Change: CTX_SIZE=131072
+# To:     CTX_SIZE=196608  # For 192K context (model's training size)
 
-# Use different context size (edit script or launch manually)
-llama-server -m ~/models/minimax-m2.1/MiniMax-M2.1-UD-Q2_K_XL-00001-of-00002.gguf \
-  --ctx-size 16384 \
+# Then restart the server
+./setup-opencode-minimax.sh --launch-only
+```
+
+Or launch manually with custom settings:
+
+```bash
+~/llama.cpp/build/bin/llama-server \
+  -m ~/models/minimax-m2.1/MiniMax-M2.1-UD-Q2_K_XL-00001-of-00002.gguf \
+  --ctx-size 196608 \
   --n-gpu-layers 99 \
+  --port 8080 \
   --jinja
 ```
 
@@ -195,6 +206,27 @@ Verify the server is running:
 ```bash
 curl http://localhost:8080/health
 ```
+
+### OpenCode command not found
+
+OpenCode is installed to `~/.opencode/bin`. Reload your shell:
+```bash
+exec zsh    # or: exec bash
+```
+
+Or manually add to PATH:
+```bash
+export PATH="$HOME/.opencode/bin:$PATH"
+```
+
+### Configuration error about temperature
+
+If you see an error about temperature being a number instead of boolean, the config format has been updated. Re-run:
+```bash
+./setup-opencode-minimax.sh --launch-only
+```
+
+This will regenerate the config with the correct format.
 
 ## Alternative Models
 
