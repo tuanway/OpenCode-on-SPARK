@@ -2,12 +2,16 @@
 #
 # setup-opencode-minimax.sh
 #
-# Downloads MiniMax-M2.1 UD-Q2_K_XL, installs OpenCode, configures it for llama.cpp,
-# and launches the model server.
+# Complete setup script for OpenCode + MiniMax-M2.1 on NVIDIA GPUs:
+# - Downloads MiniMax-M2.1 UD-Q2_K_XL model (~86GB)
+# - Builds llama.cpp with CUDA support (if not already built)
+# - Installs OpenCode CLI
+# - Configures OpenCode to use local llama.cpp server
+# - Launches model server with 128K context
 #
 # This script is restartable - it will skip completed steps.
 #
-# Usage: ./setup-opencode-minimax.sh [--download-only] [--launch-only] [--status]
+# Usage: ./setup-opencode-minimax.sh [OPTIONS]
 #
 
 set -e
@@ -22,7 +26,7 @@ MODEL_SIZE1=53687091200  # ~50GB
 MODEL_SIZE2=38654705664  # ~36GB
 LLAMA_CPP_DIR="$HOME/llama.cpp"
 SERVER_PORT=8080
-CTX_SIZE=8192
+CTX_SIZE=131072
 OPENCODE_CONFIG_DIR="$HOME/.config/opencode"
 
 # Colors
@@ -131,6 +135,104 @@ download_model() {
     log_success "Model download complete ($(du -sh "$MODEL_DIR" | cut -f1))"
 }
 
+# Build llama.cpp with CUDA support
+build_llamacpp() {
+    log_info "=== Building llama.cpp with CUDA ==="
+
+    # Check if already built
+    local server_bin="$LLAMA_CPP_DIR/build/bin/llama-server"
+    if [[ -x "$server_bin" ]]; then
+        log_success "llama.cpp already built at $LLAMA_CPP_DIR"
+        return 0
+    fi
+
+    # Check for required tools
+    if ! command -v cmake &> /dev/null; then
+        log_error "cmake not found. Please install: sudo apt-get install cmake"
+        return 1
+    fi
+
+    if ! command -v git &> /dev/null; then
+        log_error "git not found. Please install: sudo apt-get install git"
+        return 1
+    fi
+
+    # Find g++ compiler
+    local gpp_compiler=""
+    if command -v g++-13 &> /dev/null; then
+        gpp_compiler="/usr/bin/g++-13"
+    elif command -v g++-12 &> /dev/null; then
+        gpp_compiler="/usr/bin/g++-12"
+    elif command -v g++ &> /dev/null; then
+        gpp_compiler=$(which g++)
+    else
+        log_error "g++ not found. Please install: sudo apt-get install g++"
+        return 1
+    fi
+    log_info "Using compiler: $gpp_compiler"
+
+    # Find CUDA
+    local cuda_path=""
+    if [[ -d "/usr/local/cuda" ]]; then
+        cuda_path="/usr/local/cuda"
+    elif [[ -d "/usr/local/cuda-13" ]]; then
+        cuda_path="/usr/local/cuda-13"
+    elif [[ -d "/usr/local/cuda-12" ]]; then
+        cuda_path="/usr/local/cuda-12"
+    else
+        log_error "CUDA not found in /usr/local/cuda*"
+        log_info "Please install CUDA toolkit or specify CUDA path"
+        return 1
+    fi
+    log_info "Using CUDA: $cuda_path"
+
+    # Clone llama.cpp if needed
+    if [[ ! -d "$LLAMA_CPP_DIR" ]]; then
+        log_info "Cloning llama.cpp..."
+        git clone https://github.com/ggml-org/llama.cpp.git "$LLAMA_CPP_DIR"
+    else
+        log_info "llama.cpp repository already exists"
+    fi
+
+    cd "$LLAMA_CPP_DIR"
+
+    # Configure with CMake
+    log_info "Configuring build with CUDA support..."
+    export PATH="$cuda_path/bin:$PATH"
+
+    CUDAHOSTCXX="$gpp_compiler" cmake -B build \
+        -DGGML_CUDA=ON \
+        -DGGML_RPC=ON \
+        -DGGML_CUDA_F16=ON \
+        -DCMAKE_CUDA_HOST_COMPILER="$gpp_compiler" \
+        -DLLAMA_CURL=OFF
+
+    if [[ $? -ne 0 ]]; then
+        log_error "CMake configuration failed"
+        return 1
+    fi
+
+    # Build
+    log_info "Building llama.cpp (this may take several minutes)..."
+    export PATH="$cuda_path/bin:$PATH"
+    cmake --build build -j$(nproc)
+
+    if [[ $? -ne 0 ]]; then
+        log_error "Build failed"
+        return 1
+    fi
+
+    # Verify build
+    if [[ -x "$server_bin" ]]; then
+        log_success "llama.cpp built successfully"
+        log_info "Server binary: $server_bin"
+        return 0
+    else
+        log_error "Build completed but llama-server not found"
+        return 1
+    fi
+}
+
 # Install OpenCode
 install_opencode() {
     log_info "=== Installing OpenCode ==="
@@ -142,21 +244,48 @@ install_opencode() {
     fi
 
     log_info "Installing OpenCode..."
-    curl -fsSL https://opencode.sh/install.sh | sh
+    curl -fsSL https://opencode.ai/install | bash
 
     # Verify installation
     if command -v opencode &> /dev/null; then
         log_success "OpenCode installed successfully"
-    else
-        # Check if it's in ~/.local/bin
-        if [[ -f "$HOME/.local/bin/opencode" ]]; then
-            log_warn "OpenCode installed to ~/.local/bin - adding to PATH"
-            export PATH="$HOME/.local/bin:$PATH"
-            echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.bashrc"
-        else
-            log_error "OpenCode installation failed"
-            return 1
+        return 0
+    fi
+
+    # Check common installation locations
+    local opencode_path=""
+    if [[ -f "$HOME/.opencode/bin/opencode" ]]; then
+        opencode_path="$HOME/.opencode/bin"
+    elif [[ -f "$HOME/.local/bin/opencode" ]]; then
+        opencode_path="$HOME/.local/bin"
+    fi
+
+    if [[ -n "$opencode_path" ]]; then
+        log_warn "OpenCode installed to $opencode_path - adding to PATH for this session"
+        export PATH="$opencode_path:$PATH"
+
+        # Update shell rc files if not already there
+        local shell_rc=""
+        if [[ -n "$ZSH_VERSION" ]]; then
+            shell_rc="$HOME/.zshrc"
+        elif [[ -n "$BASH_VERSION" ]]; then
+            shell_rc="$HOME/.bashrc"
         fi
+
+        if [[ -n "$shell_rc" ]] && [[ -f "$shell_rc" ]]; then
+            if ! grep -q "/.opencode/bin" "$shell_rc" 2>/dev/null; then
+                echo "" >> "$shell_rc"
+                echo "# opencode" >> "$shell_rc"
+                echo "export PATH=\"$opencode_path:\$PATH\"" >> "$shell_rc"
+                log_info "Added OpenCode to PATH in $shell_rc"
+            fi
+        fi
+
+        log_success "OpenCode installed successfully"
+        return 0
+    else
+        log_error "OpenCode installation failed - binary not found"
+        return 1
     fi
 }
 
@@ -182,9 +311,7 @@ generate_config() {
       "models": {
         "minimax-m2.1": {
           "name": "MiniMax-M2.1 UD-Q2_K_XL",
-          "tools": true,
-          "temperature": 1.0,
-          "topP": 0.95
+          "tools": true
         }
       }
     }
@@ -309,6 +436,20 @@ show_status() {
     echo "  Path: $MODEL_DIR"
     echo
 
+    # llama.cpp status
+    echo "llama.cpp:"
+    local server_bin="$LLAMA_CPP_DIR/build/bin/llama-server"
+    if [[ -x "$server_bin" ]]; then
+        echo -e "  Status: ${GREEN}Built${NC}"
+        echo "  Path: $LLAMA_CPP_DIR"
+    elif [[ -d "$LLAMA_CPP_DIR" ]]; then
+        echo -e "  Status: ${YELLOW}Cloned, not built${NC}"
+        echo "  Path: $LLAMA_CPP_DIR"
+    else
+        echo -e "  Status: ${RED}Not installed${NC}"
+    fi
+    echo
+
     # OpenCode status
     echo "OpenCode:"
     if command -v opencode &> /dev/null; then
@@ -407,14 +548,28 @@ main() {
             --help|-h)
                 echo "Usage: $0 [OPTIONS]"
                 echo
+                echo "Complete setup script for OpenCode + MiniMax-M2.1 on NVIDIA GPUs"
+                echo
                 echo "Options:"
-                echo "  --download-only   Only download model and install OpenCode"
-                echo "  --launch-only     Only launch the server (assumes model exists)"
-                echo "  --status          Show current status"
-                echo "  --test            Test inference"
+                echo "  --download-only   Only download model, build llama.cpp, and install OpenCode"
+                echo "  --launch-only     Only launch the server (assumes everything is installed)"
+                echo "  --status          Show current setup status"
+                echo "  --test            Test inference on running server"
                 echo "  --help            Show this help"
                 echo
-                echo "Without options, performs full setup: download, install, configure, launch"
+                echo "Without options, performs full setup:"
+                echo "  1. Download MiniMax-M2.1 model (~86GB)"
+                echo "  2. Build llama.cpp with CUDA support (if not already built)"
+                echo "  3. Install OpenCode CLI"
+                echo "  4. Generate configuration (128K context)"
+                echo "  5. Launch llama-server"
+                echo "  6. Test inference"
+                echo
+                echo "Requirements:"
+                echo "  - NVIDIA GPU with CUDA support"
+                echo "  - ~90GB disk space for model"
+                echo "  - ~85GB GPU memory"
+                echo "  - cmake, g++, git, wget"
                 exit 0
                 ;;
             *)
@@ -451,6 +606,9 @@ main() {
     download_model
     echo
 
+    build_llamacpp
+    echo
+
     install_opencode
     echo
 
@@ -473,11 +631,23 @@ main() {
     log_success "Setup complete!"
     echo
     echo "To use OpenCode with MiniMax-M2.1:"
-    echo "  1. Make sure the server is running (./setup-opencode-minimax.sh --launch-only)"
-    echo "  2. Run: opencode"
+    echo "  1. Make sure the server is running:"
+    echo "     ./setup-opencode-minimax.sh --launch-only"
     echo
-    echo "To set as default model:"
-    echo "  opencode config set model llama-cpp/minimax-m2.1"
+    echo "  2. Reload your shell to add OpenCode to PATH:"
+    echo "     exec zsh    (or: exec bash)"
+    echo
+    echo "  3. Navigate to a project and run OpenCode:"
+    echo "     cd ~/your-project"
+    echo "     opencode"
+    echo
+    echo "Server details:"
+    echo "  - Context size: 128K tokens"
+    echo "  - Port: $SERVER_PORT"
+    echo "  - Model: MiniMax-M2.1 (228B params, 10B active)"
+    echo
+    echo "Check status anytime:"
+    echo "  ./setup-opencode-minimax.sh --status"
 }
 
 main "$@"
