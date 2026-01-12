@@ -50,7 +50,10 @@ opencode
 ./setup-opencode-minimax.sh
 
 # Check status
-./setup-opencode-minimax.sh --status
+./status.sh
+
+# Shutdown server
+./shutdown.sh
 
 # Download only (no server launch)
 ./setup-opencode-minimax.sh --download-only
@@ -61,6 +64,14 @@ opencode
 # Test inference
 ./setup-opencode-minimax.sh --test
 ```
+
+## Scripts
+
+| Script | Description |
+|--------|-------------|
+| `setup-opencode-minimax.sh` | Full setup: download, install, configure, launch |
+| `status.sh` | Show status of model, server, and configuration |
+| `shutdown.sh` | Clean shutdown of llama-server |
 
 ## Requirements
 
