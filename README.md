@@ -61,6 +61,9 @@ The script automates the entire setup process:
 # Full setup (first time)
 ./setup-opencode-minimax.sh
 
+# Full setup with Q6_K quant (larger, higher quality)
+./setup-opencode-minimax.sh --quant Q6_K
+
 # Check status
 ./status.sh
 
@@ -72,6 +75,9 @@ The script automates the entire setup process:
 
 # Launch server only (after download)
 ./setup-opencode-minimax.sh --launch-only
+
+# Launch Q6_K server only (after download)
+./setup-opencode-minimax.sh --launch-only --quant Q6_K
 
 # Test inference
 ./setup-opencode-minimax.sh --test

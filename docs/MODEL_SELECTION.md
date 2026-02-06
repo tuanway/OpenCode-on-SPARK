@@ -17,7 +17,7 @@ All quantizations from [unsloth/MiniMax-M2.1-GGUF](https://huggingface.co/unslot
 |-------------|------|---------|--------------|------------|
 | BF16 | ~912GB | Best | No | No |
 | Q8_0 | ~484GB | Excellent | No | No |
-| Q6_K | ~374GB | Very Good | No | Yes |
+| Q6_K | ~188GB | Very Good | No | Yes |
 | Q5_K_M | ~324GB | Good | No | Yes |
 | Q4_K_M | ~268GB | Good | No | Yes |
 | Q3_K_M | ~209GB | Acceptable | No | Yes |

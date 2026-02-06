@@ -96,6 +96,12 @@ Added multi-node support using llama.cpp RPC:
 - New `docs/MULTI_NODE.md` guide
 - Updated README with multi-node instructions
 
+### 9. Q6_K Model Support (NEW)
+Added optional Q6_K quant support:
+- `--quant Q6_K` to download and launch Q6_K GGUF files
+- Separate model directory per quant under `~/models/minimax-m2.1/`
+- Updated README with Q6_K usage
+
 ## Script Flow
 
 ### Before

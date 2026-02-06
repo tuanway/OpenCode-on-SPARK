@@ -12,11 +12,23 @@ CYAN='\033[0;36m'
 NC='\033[0m'
 
 # Configuration
-MODEL_DIR="$HOME/models/minimax-m2.1"
-MODEL_FILE1="MiniMax-M2.1-UD-Q2_K_XL-00001-of-00002.gguf"
-MODEL_FILE2="MiniMax-M2.1-UD-Q2_K_XL-00002-of-00002.gguf"
-MODEL_SIZE1=49950511392  # ~50GB
-MODEL_SIZE2=35967481120  # ~36GB
+MODEL_DIR_BASE="$HOME/models/minimax-m2.1"
+MODEL_VARIANTS=("UD-Q2_K_XL" "Q6_K")
+MODEL_FILES_UD=(
+    "MiniMax-M2.1-UD-Q2_K_XL-00001-of-00002.gguf"
+    "MiniMax-M2.1-UD-Q2_K_XL-00002-of-00002.gguf"
+)
+MODEL_SIZES_UD=(
+    49950511392
+    35967481120
+)
+MODEL_FILES_Q6=(
+    "MiniMax-M2.1-Q6_K-00001-of-00004.gguf"
+    "MiniMax-M2.1-Q6_K-00002-of-00004.gguf"
+    "MiniMax-M2.1-Q6_K-00003-of-00004.gguf"
+    "MiniMax-M2.1-Q6_K-00004-of-00004.gguf"
+)
+MODEL_SIZES_Q6=(0 0 0 0)
 SERVER_PORT=8080
 RPC_PORT=50052
 OPENCODE_CONFIG="$HOME/.config/opencode/opencode.json"
@@ -26,6 +38,9 @@ check_file_complete() {
     local file="$1"
     local expected_size="$2"
     if [[ -f "$file" ]]; then
+        if [[ "$expected_size" -le 0 ]]; then
+            return 0
+        fi
         local actual_size=$(stat -c%s "$file" 2>/dev/null || stat -f%z "$file" 2>/dev/null)
         if [[ "$actual_size" -ge "$expected_size" ]]; then
             return 0
@@ -40,34 +55,46 @@ echo "╚═══════════════════════�
 echo
 
 # Model Status
-echo -e "${CYAN}▸ Model: MiniMax-M2.1 UD-Q2_K_XL${NC}"
-echo "  Path: $MODEL_DIR"
+echo -e "${CYAN}▸ Models: MiniMax-M2.1${NC}"
+found_any=false
 
-if [[ -d "$MODEL_DIR" ]]; then
-    size=$(du -sh "$MODEL_DIR" 2>/dev/null | cut -f1)
-    file1_ok=false
-    file2_ok=false
-
-    if check_file_complete "$MODEL_DIR/$MODEL_FILE1" "$MODEL_SIZE1"; then
-        file1_ok=true
-    fi
-    if check_file_complete "$MODEL_DIR/$MODEL_FILE2" "$MODEL_SIZE2"; then
-        file2_ok=true
-    fi
-
-    if $file1_ok && $file2_ok; then
-        echo -e "  Status: ${GREEN}✓ Downloaded${NC} ($size)"
-    elif [[ -f "$MODEL_DIR/$MODEL_FILE1" ]] || [[ -f "$MODEL_DIR/$MODEL_FILE2" ]]; then
-        echo -e "  Status: ${YELLOW}⋯ Partial${NC} ($size)"
-        $file1_ok && echo -e "    File 1: ${GREEN}✓${NC}" || echo -e "    File 1: ${RED}✗${NC}"
-        $file2_ok && echo -e "    File 2: ${GREEN}✓${NC}" || echo -e "    File 2: ${RED}✗${NC}"
+for v in "${MODEL_VARIANTS[@]}"; do
+    model_dir="$MODEL_DIR_BASE/$v"
+    if [[ "$v" == "UD-Q2_K_XL" ]]; then
+        files=("${MODEL_FILES_UD[@]}")
+        sizes=("${MODEL_SIZES_UD[@]}")
     else
-        echo -e "  Status: ${RED}✗ Not downloaded${NC}"
+        files=("${MODEL_FILES_Q6[@]}")
+        sizes=("${MODEL_SIZES_Q6[@]}")
     fi
-else
+
+    if [[ -d "$model_dir" ]]; then
+        found_any=true
+        size=$(du -sh "$model_dir" 2>/dev/null | cut -f1)
+        ok=true
+        for i in "${!files[@]}"; do
+            if ! check_file_complete "$model_dir/${files[$i]}" "${sizes[$i]}"; then
+                ok=false
+                break
+            fi
+        done
+
+        echo "  Variant: $v"
+        echo "  Path: $model_dir"
+        if $ok; then
+            echo -e "  Status: ${GREEN}✓ Downloaded${NC} ($size)"
+        else
+            echo -e "  Status: ${YELLOW}⋯ Partial${NC} ($size)"
+        fi
+        echo
+    fi
+done
+
+if ! $found_any; then
     echo -e "  Status: ${RED}✗ Not downloaded${NC}"
+    echo "  Path: $MODEL_DIR_BASE"
+    echo
 fi
-echo
 
 # OpenCode Status
 echo -e "${CYAN}▸ OpenCode CLI${NC}"

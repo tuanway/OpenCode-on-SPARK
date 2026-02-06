@@ -17,13 +17,37 @@
 set -e
 
 # Configuration
-MODEL_DIR="$HOME/models/minimax-m2.1"
+MODEL_REPO="unsloth/MiniMax-M2.1-GGUF"
+MODEL_SUBDIR="UD-Q2_K_XL"
 MODEL_NAME="MiniMax-M2.1-UD-Q2_K_XL"
-MODEL_FILE1="MiniMax-M2.1-UD-Q2_K_XL-00001-of-00002.gguf"
-MODEL_FILE2="MiniMax-M2.1-UD-Q2_K_XL-00002-of-00002.gguf"
-MODEL_URL_BASE="https://huggingface.co/unsloth/MiniMax-M2.1-GGUF/resolve/main/UD-Q2_K_XL"
-MODEL_SIZE1=49950511392  # ~50GB
-MODEL_SIZE2=35967481120  # ~36GB
+MODEL_DIR_BASE="$HOME/models/minimax-m2.1"
+MODEL_DIR="$MODEL_DIR_BASE/$MODEL_SUBDIR"
+MODEL_URL_BASE="https://huggingface.co/$MODEL_REPO/resolve/main/$MODEL_SUBDIR"
+
+# Default quant
+QUANT="UD-Q2_K_XL"
+
+# Model file lists
+MODEL_FILES_UD=(
+    "MiniMax-M2.1-UD-Q2_K_XL-00001-of-00002.gguf"
+    "MiniMax-M2.1-UD-Q2_K_XL-00002-of-00002.gguf"
+)
+MODEL_SIZES_UD=(
+    49950511392  # ~50GB
+    35967481120  # ~36GB
+)
+
+MODEL_FILES_Q6=(
+    "MiniMax-M2.1-Q6_K-00001-of-00004.gguf"
+    "MiniMax-M2.1-Q6_K-00002-of-00004.gguf"
+    "MiniMax-M2.1-Q6_K-00003-of-00004.gguf"
+    "MiniMax-M2.1-Q6_K-00004-of-00004.gguf"
+)
+# Sizes not enforced for Q6_K (files are large and sizes may vary slightly)
+MODEL_SIZES_Q6=(0 0 0 0)
+
+MODEL_FILES=("${MODEL_FILES_UD[@]}")
+MODEL_SIZES=("${MODEL_SIZES_UD[@]}")
 LLAMA_CPP_DIR="$HOME/llama.cpp"
 SERVER_PORT=8080
 CTX_SIZE=131072
@@ -50,6 +74,9 @@ check_file_complete() {
     local expected_size="$2"
 
     if [[ -f "$file" ]]; then
+        if [[ "$expected_size" -le 0 ]]; then
+            return 0
+        fi
         local actual_size=$(stat -c%s "$file" 2>/dev/null || stat -f%z "$file" 2>/dev/null)
         if [[ "$actual_size" -ge "$expected_size" ]]; then
             return 0
@@ -81,28 +108,51 @@ download_file() {
     fi
 }
 
+select_quant() {
+    case "$QUANT" in
+        UD-Q2_K_XL)
+            MODEL_SUBDIR="UD-Q2_K_XL"
+            MODEL_NAME="MiniMax-M2.1-UD-Q2_K_XL"
+            MODEL_FILES=("${MODEL_FILES_UD[@]}")
+            MODEL_SIZES=("${MODEL_SIZES_UD[@]}")
+            ;;
+        Q6_K)
+            MODEL_SUBDIR="Q6_K"
+            MODEL_NAME="MiniMax-M2.1-Q6_K"
+            MODEL_FILES=("${MODEL_FILES_Q6[@]}")
+            MODEL_SIZES=("${MODEL_SIZES_Q6[@]}")
+            ;;
+        *)
+            log_error "Unknown quant: $QUANT"
+            log_info "Supported quants: UD-Q2_K_XL, Q6_K"
+            exit 1
+            ;;
+    esac
+
+    MODEL_DIR="$MODEL_DIR_BASE/$MODEL_SUBDIR"
+    MODEL_URL_BASE="https://huggingface.co/$MODEL_REPO/resolve/main/$MODEL_SUBDIR"
+}
+
 # Download model files
 download_model() {
-    log_info "=== Downloading MiniMax-M2.1 UD-Q2_K_XL ==="
+    log_info "=== Downloading MiniMax-M2.1 ($QUANT) ==="
 
     mkdir -p "$MODEL_DIR"
     cd "$MODEL_DIR"
 
-    # Download both files (can be parallelized)
-    local file1_complete=false
-    local file2_complete=false
+    local all_complete=true
 
-    if check_file_complete "$MODEL_FILE1" "$MODEL_SIZE1"; then
-        log_success "$MODEL_FILE1 already exists"
-        file1_complete=true
-    fi
+    for i in "${!MODEL_FILES[@]}"; do
+        local file="${MODEL_FILES[$i]}"
+        local size="${MODEL_SIZES[$i]}"
+        if check_file_complete "$file" "$size"; then
+            log_success "$file already exists"
+        else
+            all_complete=false
+        fi
+    done
 
-    if check_file_complete "$MODEL_FILE2" "$MODEL_SIZE2"; then
-        log_success "$MODEL_FILE2 already exists"
-        file2_complete=true
-    fi
-
-    if $file1_complete && $file2_complete; then
+    if $all_complete; then
         log_success "Model already fully downloaded ($(du -sh "$MODEL_DIR" | cut -f1))"
         return 0
     fi
@@ -112,15 +162,14 @@ download_model() {
 
     local pids=()
 
-    if ! $file1_complete; then
-        wget -c -q --show-progress "$MODEL_URL_BASE/$MODEL_FILE1" -O "$MODEL_FILE1" &
-        pids+=($!)
-    fi
-
-    if ! $file2_complete; then
-        wget -c -q --show-progress "$MODEL_URL_BASE/$MODEL_FILE2" -O "$MODEL_FILE2" &
-        pids+=($!)
-    fi
+    for i in "${!MODEL_FILES[@]}"; do
+        local file="${MODEL_FILES[$i]}"
+        local size="${MODEL_SIZES[$i]}"
+        if ! check_file_complete "$file" "$size"; then
+            wget -c -q --show-progress "$MODEL_URL_BASE/$file" -O "$file" &
+            pids+=($!)
+        fi
+    done
 
     # Wait for downloads
     local failed=false
@@ -313,7 +362,7 @@ generate_config() {
       },
       "models": {
         "minimax-m2.1": {
-          "name": "MiniMax-M2.1 UD-Q2_K_XL",
+          "name": "MiniMax-M2.1 ($QUANT)",
           "tools": true
         }
       }
@@ -351,7 +400,7 @@ launch_server() {
     fi
 
     # Check if model exists
-    local model_path="$MODEL_DIR/$MODEL_FILE1"
+    local model_path="$MODEL_DIR/${MODEL_FILES[0]}"
     if [[ ! -f "$model_path" ]]; then
         log_error "Model not found: $model_path"
         log_info "Run with --download-only first"
@@ -466,11 +515,19 @@ show_status() {
     echo
 
     # Model status
-    echo "Model: MiniMax-M2.1 UD-Q2_K_XL"
+    echo "Model: MiniMax-M2.1 ($QUANT)"
     if [[ -d "$MODEL_DIR" ]]; then
         local size=$(du -sh "$MODEL_DIR" 2>/dev/null | cut -f1)
-        if check_file_complete "$MODEL_DIR/$MODEL_FILE1" "$MODEL_SIZE1" && \
-           check_file_complete "$MODEL_DIR/$MODEL_FILE2" "$MODEL_SIZE2"; then
+        local ok=true
+        for i in "${!MODEL_FILES[@]}"; do
+            local file="${MODEL_FILES[$i]}"
+            local fsize="${MODEL_SIZES[$i]}"
+            if ! check_file_complete "$MODEL_DIR/$file" "$fsize"; then
+                ok=false
+                break
+            fi
+        done
+        if $ok; then
             echo -e "  Status: ${GREEN}Downloaded${NC} ($size)"
         else
             echo -e "  Status: ${YELLOW}Partial${NC} ($size)"
@@ -628,6 +685,10 @@ main() {
                 done
                 shift 2
                 ;;
+            --quant)
+                QUANT="$2"
+                shift 2
+                ;;
             --help|-h)
                 echo "Usage: $0 [OPTIONS]"
                 echo
@@ -643,6 +704,7 @@ main() {
                 echo "  --rpc-bind HOST   RPC server bind address (default: 0.0.0.0)"
                 echo "  --rpc HOST:PORT   Add a llama.cpp --rpc target (repeatable)"
                 echo "  --rpc-hosts CSV   Comma-separated list of rpc targets"
+                echo "  --quant QUANT     Model quant (UD-Q2_K_XL, Q6_K)"
                 echo "  --help            Show this help"
                 echo
                 echo "Without options, performs full setup:"
@@ -666,6 +728,8 @@ main() {
                 ;;
         esac
     done
+
+    select_quant
 
     if $show_status_only; then
         show_status
