@@ -17,6 +17,7 @@ log_success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
 log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 
 SERVER_PORT=8080
+RPC_PORT=50052
 
 echo "=== Shutting down MiniMax-M2.1 Server ==="
 echo
@@ -49,9 +50,29 @@ if [[ -n "$PIDS" ]]; then
         fi
     done
 
-    log_success "llama-server stopped"
+log_success "llama-server stopped"
 else
     log_info "No llama-server processes found"
+fi
+
+# Stop rpc-server processes (multi-node)
+RPC_PIDS=$(pgrep -f "rpc-server" 2>/dev/null || true)
+if [[ -n "$RPC_PIDS" ]]; then
+    log_info "Found rpc-server process(es): $RPC_PIDS"
+    for PID in $RPC_PIDS; do
+        log_info "Sending SIGTERM to PID $PID..."
+        kill -TERM "$PID" 2>/dev/null || true
+    done
+    sleep 2
+    for PID in $RPC_PIDS; do
+        if kill -0 "$PID" 2>/dev/null; then
+            log_warn "Process $PID still running, sending SIGKILL..."
+            kill -9 "$PID" 2>/dev/null || true
+        fi
+    done
+    log_success "rpc-server stopped"
+else
+    log_info "No rpc-server processes found"
 fi
 
 # Check if port is still in use
@@ -61,10 +82,20 @@ if lsof -i :$SERVER_PORT &>/dev/null; then
     sleep 1
 fi
 
+if lsof -i :$RPC_PORT &>/dev/null; then
+    log_warn "Port $RPC_PORT still in use, killing..."
+    fuser -k $RPC_PORT/tcp 2>/dev/null || true
+    sleep 1
+fi
+
 # Clean up PID file if exists
 if [[ -f /tmp/llama-server.pid ]]; then
     rm -f /tmp/llama-server.pid
     log_info "Removed PID file"
+fi
+if [[ -f /tmp/llama-rpc-server.pid ]]; then
+    rm -f /tmp/llama-rpc-server.pid
+    log_info "Removed RPC PID file"
 fi
 
 # Verify shutdown

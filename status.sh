@@ -18,6 +18,7 @@ MODEL_FILE2="MiniMax-M2.1-UD-Q2_K_XL-00002-of-00002.gguf"
 MODEL_SIZE1=49950511392  # ~50GB
 MODEL_SIZE2=35967481120  # ~36GB
 SERVER_PORT=8080
+RPC_PORT=50052
 OPENCODE_CONFIG="$HOME/.config/opencode/opencode.json"
 
 # Check if file is complete
@@ -126,6 +127,18 @@ if curl -s "http://localhost:$SERVER_PORT/health" &>/dev/null; then
     echo "  Endpoint: http://localhost:$SERVER_PORT/v1/chat/completions"
 else
     echo -e "  Health: ${RED}✗ Not responding${NC}"
+fi
+echo
+
+# RPC Server Status (multi-node)
+echo -e "${CYAN}▸ rpc-server${NC}"
+echo "  Port: $RPC_PORT"
+
+RPC_PIDS=$(pgrep -f "rpc-server" 2>/dev/null || true)
+if [[ -n "$RPC_PIDS" ]]; then
+    echo -e "  Process: ${GREEN}✓ Running${NC} (PID: $RPC_PIDS)"
+else
+    echo -e "  Process: ${YELLOW}⋯ Not running${NC}"
 fi
 echo
 

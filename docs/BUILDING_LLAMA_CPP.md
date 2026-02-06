@@ -132,4 +132,9 @@ For using two DGX Sparks together (memory expansion, not tensor parallelism):
   --n-gpu-layers 99
 ```
 
+You can also use the repo helper:
+```bash
+./setup-opencode-minimax.sh --rpc-worker
+```
+
 See [spark-multi-node](https://github.com/rick-stevens-ai/spark-multi-node) for automated scripts.

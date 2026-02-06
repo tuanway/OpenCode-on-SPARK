@@ -89,6 +89,13 @@ Shows complete system state at a glance.
 4. Server details (context, port, model info)
 5. Status check command
 
+### 8. Multi-Node RPC Support (NEW)
+Added multi-node support using llama.cpp RPC:
+- `--rpc-worker` option to start `rpc-server` on worker nodes
+- `--rpc` and `--rpc-hosts` options to connect remote RPC targets
+- New `docs/MULTI_NODE.md` guide
+- Updated README with multi-node instructions
+
 ## Script Flow
 
 ### Before

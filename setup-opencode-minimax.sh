@@ -28,6 +28,9 @@ LLAMA_CPP_DIR="$HOME/llama.cpp"
 SERVER_PORT=8080
 CTX_SIZE=131072
 OPENCODE_CONFIG_DIR="$HOME/.config/opencode"
+RPC_PORT=50052
+RPC_BIND="0.0.0.0"
+RPC_TARGETS=()
 
 # Colors
 RED='\033[0;31m'
@@ -373,6 +376,16 @@ launch_server() {
     log_info "  Model: $MODEL_NAME"
     log_info "  Port: $SERVER_PORT"
     log_info "  Context: $CTX_SIZE"
+    if [[ ${#RPC_TARGETS[@]} -gt 0 ]]; then
+        log_info "  RPC targets: ${RPC_TARGETS[*]}"
+    fi
+
+    local rpc_args=()
+    if [[ ${#RPC_TARGETS[@]} -gt 0 ]]; then
+        for target in "${RPC_TARGETS[@]}"; do
+            rpc_args+=(--rpc "$target")
+        done
+    fi
 
     nohup "$server_bin" \
         -m "$model_path" \
@@ -380,6 +393,7 @@ launch_server() {
         --port "$SERVER_PORT" \
         --ctx-size "$CTX_SIZE" \
         --n-gpu-layers 99 \
+        "${rpc_args[@]}" \
         --jinja \
         > /tmp/llama-server-minimax-m2.1.log 2>&1 &
 
@@ -413,6 +427,37 @@ launch_server() {
 
     log_success "Server is ready!"
     log_info "API endpoint: http://localhost:$SERVER_PORT/v1/chat/completions"
+}
+
+# Launch rpc-server for multi-node
+launch_rpc_server() {
+    log_info "=== Launching llama.cpp RPC Server ==="
+
+    local rpc_bin="$LLAMA_CPP_DIR/build/bin/rpc-server"
+    if [[ ! -x "$rpc_bin" ]]; then
+        log_error "rpc-server not found at $rpc_bin"
+        log_info "Please build llama.cpp first"
+        return 1
+    fi
+
+    # Check if already running
+    if pgrep -f "rpc-server" &>/dev/null; then
+        log_warn "rpc-server appears to be running already"
+    fi
+
+    log_info "Starting rpc-server..."
+    log_info "  Bind: $RPC_BIND"
+    log_info "  Port: $RPC_PORT"
+
+    nohup "$rpc_bin" \
+        -H "$RPC_BIND" \
+        -p "$RPC_PORT" \
+        > /tmp/llama-rpc-server.log 2>&1 &
+
+    local rpc_pid=$!
+    echo "$rpc_pid" > /tmp/llama-rpc-server.pid
+
+    log_success "rpc-server started (PID: $rpc_pid)"
 }
 
 # Show status
@@ -482,6 +527,17 @@ show_status() {
         echo -e "  Status: ${RED}Not running${NC}"
     fi
     echo
+
+    # RPC server status (multi-node)
+    echo "rpc-server:"
+    echo "  Port: $RPC_PORT"
+    if pgrep -f "rpc-server" &>/dev/null; then
+        local rpids=$(pgrep -f "rpc-server" | tr '\n' ' ')
+        echo -e "  Status: ${GREEN}Running${NC} (PID: $rpids)"
+    else
+        echo -e "  Status: ${YELLOW}Not running${NC}"
+    fi
+    echo
 }
 
 # Test inference
@@ -525,6 +581,7 @@ main() {
     local launch_only=false
     local show_status_only=false
     local test_only=false
+    local rpc_worker_only=false
 
     # Parse arguments
     while [[ $# -gt 0 ]]; do
@@ -545,6 +602,32 @@ main() {
                 test_only=true
                 shift
                 ;;
+            --rpc-worker)
+                rpc_worker_only=true
+                shift
+                ;;
+            --rpc-port)
+                RPC_PORT="$2"
+                shift 2
+                ;;
+            --rpc-bind)
+                RPC_BIND="$2"
+                shift 2
+                ;;
+            --rpc)
+                RPC_TARGETS+=("$2")
+                shift 2
+                ;;
+            --rpc-hosts)
+                IFS=',' read -ra _hosts <<< "$2"
+                for h in "${_hosts[@]}"; do
+                    h_trim=$(echo "$h" | xargs)
+                    if [[ -n "$h_trim" ]]; then
+                        RPC_TARGETS+=("$h_trim")
+                    fi
+                done
+                shift 2
+                ;;
             --help|-h)
                 echo "Usage: $0 [OPTIONS]"
                 echo
@@ -555,6 +638,11 @@ main() {
                 echo "  --launch-only     Only launch the server (assumes everything is installed)"
                 echo "  --status          Show current setup status"
                 echo "  --test            Test inference on running server"
+                echo "  --rpc-worker      Start rpc-server for multi-node (no model or OpenCode setup)"
+                echo "  --rpc-port PORT   RPC server port (default: 50052)"
+                echo "  --rpc-bind HOST   RPC server bind address (default: 0.0.0.0)"
+                echo "  --rpc HOST:PORT   Add a llama.cpp --rpc target (repeatable)"
+                echo "  --rpc-hosts CSV   Comma-separated list of rpc targets"
                 echo "  --help            Show this help"
                 echo
                 echo "Without options, performs full setup:"
@@ -586,6 +674,12 @@ main() {
 
     if $test_only; then
         test_inference
+        exit $?
+    fi
+
+    if $rpc_worker_only; then
+        build_llamacpp
+        launch_rpc_server
         exit $?
     fi
 

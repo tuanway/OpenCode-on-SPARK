@@ -77,6 +77,29 @@ The script automates the entire setup process:
 ./setup-opencode-minimax.sh --test
 ```
 
+## Multi-Node (DGX Spark)
+
+You can extend GPU memory across multiple DGX Spark nodes using llama.cpp RPC (memory expansion, not tensor parallel).
+
+### 1) Start rpc-server on each worker node
+```bash
+./setup-opencode-minimax.sh --rpc-worker
+```
+
+### 2) Start llama-server on the primary node with RPC targets
+```bash
+./setup-opencode-minimax.sh --launch-only --rpc 10.0.0.2:50052 --rpc 10.0.0.3:50052
+```
+
+You can also pass a comma-separated list:
+```bash
+./setup-opencode-minimax.sh --launch-only --rpc-hosts 10.0.0.2:50052,10.0.0.3:50052
+```
+
+Note: The primary node still needs the model files and `llama-server`. Run full setup there first.
+
+See `docs/MULTI_NODE.md` for details.
+
 ## Scripts
 
 | Script | Description |
