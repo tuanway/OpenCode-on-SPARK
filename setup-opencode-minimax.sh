@@ -217,39 +217,79 @@ download_model() {
 
         log_info "Discovering GGUF files for $MODEL_REPO/$MODEL_SUBDIR ..."
         tree_json=$(wget -qO- "$api_url" || true)
-        if [[ -z "$tree_json" ]]; then
-            log_error "Failed to query Hugging Face model tree API."
-            return 1
-        fi
-
         MODEL_FILES=()
         MODEL_SIZES=()
 
-        if command -v jq &> /dev/null; then
-            while IFS=$'\t' read -r rel size; do
-                [[ -z "$rel" ]] && continue
-                MODEL_FILES+=("$rel")
-                if [[ "$size" =~ ^[0-9]+$ ]]; then
-                    MODEL_SIZES+=("$size")
-                else
+        if [[ -n "$tree_json" ]]; then
+            if command -v jq &> /dev/null; then
+                while IFS=$'\t' read -r rel size; do
+                    [[ -z "$rel" ]] && continue
+                    MODEL_FILES+=("$rel")
+                    if [[ "$size" =~ ^[0-9]+$ ]]; then
+                        MODEL_SIZES+=("$size")
+                    else
+                        MODEL_SIZES+=(0)
+                    fi
+                done < <(
+                    echo "$tree_json" | jq -r \
+                      --arg pref "$path_prefix" \
+                      '.[] | select(.type=="file" and (.path | endswith(".gguf"))) | [(.path | sub("^" + $pref; "")), (.size // 0)] | @tsv'
+                )
+            else
+                while IFS= read -r rel; do
+                    [[ -z "$rel" ]] && continue
+                    MODEL_FILES+=("$rel")
                     MODEL_SIZES+=(0)
+                done < <(
+                    echo "$tree_json" \
+                      | grep -o "\"path\":\"$MODEL_SUBDIR/[^\"]*\\.gguf\"" \
+                      | sed -E "s#\"path\":\"$MODEL_SUBDIR/##; s#\"##g" \
+                      | sort -u
+                )
+            fi
+        fi
+
+        # Fallback when HF tree API is blocked/unreachable: probe common shard names directly.
+        if [[ ${#MODEL_FILES[@]} -eq 0 ]]; then
+            log_warn "HF tree API unavailable. Falling back to direct shard probing via wget."
+            local base_url="https://huggingface.co/$MODEL_REPO/resolve/main/$MODEL_SUBDIR"
+            local base_name=""
+            local shard_count=""
+            local found=false
+            local base_candidates=(
+                "gpt-oss-120b-Q4_K_XL"
+                "GPT-OSS-120B-Q4_K_XL"
+                "gpt-oss-120b-q4_k_xl"
+            )
+            local shard_candidates=(2 3 4 5 6 8)
+
+            for cand in "${base_candidates[@]}"; do
+                for n in "${shard_candidates[@]}"; do
+                    local probe_file
+                    probe_file=$(printf "%s-%05d-of-%05d.gguf" "$cand" 1 "$n")
+                    if wget --spider -q "$base_url/$probe_file"; then
+                        base_name="$cand"
+                        shard_count="$n"
+                        found=true
+                        break
+                    fi
+                done
+                if $found; then
+                    break
                 fi
-            done < <(
-                echo "$tree_json" | jq -r \
-                  --arg pref "$path_prefix" \
-                  '.[] | select(.type=="file" and (.path | endswith(".gguf"))) | [(.path | sub("^" + $pref; "")), (.size // 0)] | @tsv'
-            )
-        else
-            while IFS= read -r rel; do
-                [[ -z "$rel" ]] && continue
-                MODEL_FILES+=("$rel")
+            done
+
+            if ! $found; then
+                log_error "Could not discover GPT-OSS shard filenames via API or probing."
+                return 1
+            fi
+
+            MODEL_FILES=()
+            MODEL_SIZES=()
+            for ((i=1; i<=shard_count; i++)); do
+                MODEL_FILES+=("$(printf "%s-%05d-of-%05d.gguf" "$base_name" "$i" "$shard_count")")
                 MODEL_SIZES+=(0)
-            done < <(
-                echo "$tree_json" \
-                  | grep -o "\"path\":\"$MODEL_SUBDIR/[^\"]*\\.gguf\"" \
-                  | sed -E "s#\"path\":\"$MODEL_SUBDIR/##; s#\"##g" \
-                  | sort -u
-            )
+            done
         fi
 
         if [[ ${#MODEL_FILES[@]} -eq 0 ]]; then
