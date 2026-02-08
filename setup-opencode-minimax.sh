@@ -56,7 +56,6 @@ MODEL_SIZES_UD_Q3_XL=(0 0 0)
 MODEL_FILES=("${MODEL_FILES_UD[@]}")
 MODEL_SIZES=("${MODEL_SIZES_UD[@]}")
 MODEL_KIND="gguf"
-MODEL_HF_INCLUDE=""
 OPENCODE_MODEL_ID="minimax-m2.1"
 OPENCODE_MODEL_DISPLAY="MiniMax-M2.1 ($QUANT)"
 THINKING_MODE="normal"
@@ -158,13 +157,12 @@ select_quant() {
             OPENCODE_MODEL_DISPLAY="MiniMax-M2.1 ($QUANT)"
             ;;
         GPT-OSS-120B)
-            MODEL_KIND="gguf_snapshot"
+            MODEL_KIND="gguf_wget_discover"
             MODEL_REPO="unsloth/gpt-oss-120b-GGUF"
-            MODEL_SUBDIR=""
+            MODEL_SUBDIR="Q4_K_XL"
             MODEL_NAME="gpt-oss-120b-Q4_K_XL"
             MODEL_DIR_BASE="$HOME/models/gpt-oss"
             MODEL_DIR="$MODEL_DIR_BASE/gpt-oss-120b-Q4_K_XL"
-            MODEL_HF_INCLUDE="Q4_K_XL/*"
             MODEL_FILES=()
             MODEL_SIZES=()
             MODEL_URL_BASE=""
@@ -209,17 +207,98 @@ select_quant() {
 download_model() {
     log_info "=== Downloading Model ($QUANT) ==="
 
-    if [[ "$MODEL_KIND" == "gguf_snapshot" ]]; then
+    if [[ "$MODEL_KIND" == "gguf_wget_discover" ]]; then
+        local api_url="https://huggingface.co/api/models/$MODEL_REPO/tree/main/$MODEL_SUBDIR?recursive=true"
+        local tree_json=""
+        local path_prefix="$MODEL_SUBDIR/"
+
         mkdir -p "$MODEL_DIR"
-        if ! command -v huggingface-cli &> /dev/null; then
-            log_error "huggingface-cli not found (required for snapshot downloads)"
-            log_info "Install with: pip install -U huggingface_hub"
+        cd "$MODEL_DIR"
+
+        log_info "Discovering GGUF files for $MODEL_REPO/$MODEL_SUBDIR ..."
+        tree_json=$(wget -qO- "$api_url" || true)
+        if [[ -z "$tree_json" ]]; then
+            log_error "Failed to query Hugging Face model tree API."
             return 1
         fi
 
-        log_info "Downloading GGUF snapshot from $MODEL_REPO (include: $MODEL_HF_INCLUDE)"
-        huggingface-cli download "$MODEL_REPO" --include "$MODEL_HF_INCLUDE" --local-dir "$MODEL_DIR" --resume-download
-        log_success "GGUF snapshot download complete ($(du -sh "$MODEL_DIR" | cut -f1))"
+        MODEL_FILES=()
+        MODEL_SIZES=()
+
+        if command -v jq &> /dev/null; then
+            while IFS=$'\t' read -r rel size; do
+                [[ -z "$rel" ]] && continue
+                MODEL_FILES+=("$rel")
+                if [[ "$size" =~ ^[0-9]+$ ]]; then
+                    MODEL_SIZES+=("$size")
+                else
+                    MODEL_SIZES+=(0)
+                fi
+            done < <(
+                echo "$tree_json" | jq -r \
+                  --arg pref "$path_prefix" \
+                  '.[] | select(.type=="file" and (.path | endswith(".gguf"))) | [(.path | sub("^" + $pref; "")), (.size // 0)] | @tsv'
+            )
+        else
+            while IFS= read -r rel; do
+                [[ -z "$rel" ]] && continue
+                MODEL_FILES+=("$rel")
+                MODEL_SIZES+=(0)
+            done < <(
+                echo "$tree_json" \
+                  | grep -o "\"path\":\"$MODEL_SUBDIR/[^\"]*\\.gguf\"" \
+                  | sed -E "s#\"path\":\"$MODEL_SUBDIR/##; s#\"##g" \
+                  | sort -u
+            )
+        fi
+
+        if [[ ${#MODEL_FILES[@]} -eq 0 ]]; then
+            log_error "No GGUF files discovered in $MODEL_REPO/$MODEL_SUBDIR"
+            return 1
+        fi
+
+        MODEL_URL_BASE="https://huggingface.co/$MODEL_REPO/resolve/main/$MODEL_SUBDIR"
+        log_info "Discovered ${#MODEL_FILES[@]} GGUF file(s). Starting downloads..."
+
+        local all_complete=true
+        for i in "${!MODEL_FILES[@]}"; do
+            local file="${MODEL_FILES[$i]}"
+            local size="${MODEL_SIZES[$i]}"
+            if check_file_complete "$file" "$size"; then
+                log_success "$file already exists"
+            else
+                all_complete=false
+            fi
+        done
+
+        if $all_complete; then
+            log_success "Model already fully downloaded ($(du -sh "$MODEL_DIR" | cut -f1))"
+            return 0
+        fi
+
+        local pids=()
+        local failed=false
+        for i in "${!MODEL_FILES[@]}"; do
+            local file="${MODEL_FILES[$i]}"
+            local size="${MODEL_SIZES[$i]}"
+            if ! check_file_complete "$file" "$size"; then
+                wget -c -q --show-progress "$MODEL_URL_BASE/$file" -O "$file" &
+                pids+=($!)
+            fi
+        done
+
+        for pid in "${pids[@]}"; do
+            if ! wait "$pid"; then
+                failed=true
+            fi
+        done
+
+        if $failed; then
+            log_error "Some downloads failed. Re-run the script to resume."
+            return 1
+        fi
+
+        log_success "GGUF download complete ($(du -sh "$MODEL_DIR" | cut -f1))"
         return 0
     fi
 

@@ -67,7 +67,7 @@ The script automates the entire setup process:
 # Full setup with UD-Q3_K_XL quant (3-bit XL)
 ./setup-opencode-minimax.sh --quant UD-Q3_K_XL
 
-# Download GPT-OSS-120B (Q4_K_XL GGUF snapshot)
+# Download GPT-OSS-120B (Q4_K_XL GGUF)
 ./setup-opencode-minimax.sh --quant GPT-OSS-120B --download-only
 
 # Check status
