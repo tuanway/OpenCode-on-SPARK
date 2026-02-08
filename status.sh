@@ -13,7 +13,7 @@ NC='\033[0m'
 
 # Configuration
 MODEL_DIR_BASE="$HOME/models/minimax-m2.1"
-MODEL_VARIANTS=("UD-Q2_K_XL" "Q6_K" "UD-Q6_K_XL")
+MODEL_VARIANTS=("UD-Q2_K_XL" "Q6_K" "UD-Q6_K_XL" "UD-Q4_K_XL")
 MODEL_FILES_UD=(
     "MiniMax-M2.1-UD-Q2_K_XL-00001-of-00002.gguf"
     "MiniMax-M2.1-UD-Q2_K_XL-00002-of-00002.gguf"
@@ -36,6 +36,12 @@ MODEL_FILES_UD_Q6_XL=(
     "MiniMax-M2.1-UD-Q6_K_XL-00004-of-00004.gguf"
 )
 MODEL_SIZES_UD_Q6_XL=(0 0 0 0)
+MODEL_FILES_UD_Q4_XL=(
+    "MiniMax-M2.1-UD-Q4_K_XL-00001-of-00003.gguf"
+    "MiniMax-M2.1-UD-Q4_K_XL-00002-of-00003.gguf"
+    "MiniMax-M2.1-UD-Q4_K_XL-00003-of-00003.gguf"
+)
+MODEL_SIZES_UD_Q4_XL=(0 0 0)
 SERVER_PORT=8080
 RPC_PORT=50052
 OPENCODE_CONFIG="$HOME/.config/opencode/opencode.json"
@@ -73,9 +79,12 @@ for v in "${MODEL_VARIANTS[@]}"; do
     elif [[ "$v" == "Q6_K" ]]; then
         files=("${MODEL_FILES_Q6[@]}")
         sizes=("${MODEL_SIZES_Q6[@]}")
-    else
+    elif [[ "$v" == "UD-Q6_K_XL" ]]; then
         files=("${MODEL_FILES_UD_Q6_XL[@]}")
         sizes=("${MODEL_SIZES_UD_Q6_XL[@]}")
+    else
+        files=("${MODEL_FILES_UD_Q4_XL[@]}")
+        sizes=("${MODEL_SIZES_UD_Q4_XL[@]}")
     fi
 
     if [[ -d "$model_dir" ]]; then

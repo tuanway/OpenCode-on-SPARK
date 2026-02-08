@@ -55,6 +55,14 @@ MODEL_FILES_UD_Q6_XL=(
 # Sizes not enforced for UD-Q6_K_XL (files are large and sizes may vary slightly)
 MODEL_SIZES_UD_Q6_XL=(0 0 0 0)
 
+MODEL_FILES_UD_Q4_XL=(
+    "MiniMax-M2.1-UD-Q4_K_XL-00001-of-00003.gguf"
+    "MiniMax-M2.1-UD-Q4_K_XL-00002-of-00003.gguf"
+    "MiniMax-M2.1-UD-Q4_K_XL-00003-of-00003.gguf"
+)
+# Sizes not enforced for UD-Q4_K_XL (files are large and sizes may vary slightly)
+MODEL_SIZES_UD_Q4_XL=(0 0 0)
+
 MODEL_FILES=("${MODEL_FILES_UD[@]}")
 MODEL_SIZES=("${MODEL_SIZES_UD[@]}")
 LLAMA_CPP_DIR="$HOME/llama.cpp"
@@ -137,9 +145,15 @@ select_quant() {
             MODEL_FILES=("${MODEL_FILES_UD_Q6_XL[@]}")
             MODEL_SIZES=("${MODEL_SIZES_UD_Q6_XL[@]}")
             ;;
+        UD-Q4_K_XL)
+            MODEL_SUBDIR="UD-Q4_K_XL"
+            MODEL_NAME="MiniMax-M2.1-UD-Q4_K_XL"
+            MODEL_FILES=("${MODEL_FILES_UD_Q4_XL[@]}")
+            MODEL_SIZES=("${MODEL_SIZES_UD_Q4_XL[@]}")
+            ;;
         *)
             log_error "Unknown quant: $QUANT"
-            log_info "Supported quants: UD-Q2_K_XL, Q6_K, UD-Q6_K_XL"
+            log_info "Supported quants: UD-Q2_K_XL, Q6_K, UD-Q6_K_XL, UD-Q4_K_XL"
             exit 1
             ;;
     esac
@@ -719,7 +733,7 @@ main() {
                 echo "  --rpc-bind HOST   RPC server bind address (default: 0.0.0.0)"
                 echo "  --rpc HOST:PORT   Add a llama.cpp --rpc target (repeatable)"
                 echo "  --rpc-hosts CSV   Comma-separated list of rpc targets"
-                echo "  --quant QUANT     Model quant (UD-Q2_K_XL, Q6_K, UD-Q6_K_XL)"
+                echo "  --quant QUANT     Model quant (UD-Q2_K_XL, Q6_K, UD-Q6_K_XL, UD-Q4_K_XL)"
                 echo "  --help            Show this help"
                 echo
                 echo "Without options, performs full setup:"

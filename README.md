@@ -8,7 +8,7 @@ This repository provides scripts to set up a complete local AI coding assistant 
 
 - **Hardware**: NVIDIA DGX Spark with GB10 GPU (128GB unified memory)
 - **Model**: [MiniMax-M2.1](https://huggingface.co/unsloth/MiniMax-M2.1-GGUF) - 456B MoE (21B active), optimized for coding and agentic tasks
-- **Quantization**: UD-Q2_K_XL (~86GB, default), Q6_K, UD-Q6_K_XL
+- **Quantization**: UD-Q2_K_XL (~86GB, default), Q6_K, UD-Q6_K_XL, UD-Q4_K_XL
 - **Runtime**: [llama.cpp](https://github.com/ggml-org/llama.cpp) with CUDA backend
 - **Frontend**: [OpenCode](https://opencode.ai) - AI coding assistant CLI
 
@@ -67,6 +67,9 @@ The script automates the entire setup process:
 # Full setup with UD-Q6_K_XL quant (larger, higher quality)
 ./setup-opencode-minimax.sh --quant UD-Q6_K_XL
 
+# Full setup with UD-Q4_K_XL quant (4-bit XL)
+./setup-opencode-minimax.sh --quant UD-Q4_K_XL
+
 # Check status
 ./status.sh
 
@@ -84,6 +87,9 @@ The script automates the entire setup process:
 
 # Launch UD-Q6_K_XL server only (after download)
 ./setup-opencode-minimax.sh --launch-only --quant UD-Q6_K_XL
+
+# Launch UD-Q4_K_XL server only (after download)
+./setup-opencode-minimax.sh --launch-only --quant UD-Q4_K_XL
 
 # Test inference
 ./setup-opencode-minimax.sh --test
@@ -170,7 +176,7 @@ The script will automatically:
 | Architecture | Mixture of Experts (MoE) |
 | Total Parameters | 456B |
 | Active Parameters | 21B |
-| Quantization | UD-Q2_K_XL (default), Q6_K, UD-Q6_K_XL |
+| Quantization | UD-Q2_K_XL (default), Q6_K, UD-Q6_K_XL, UD-Q4_K_XL |
 | Size on Disk | ~86GB |
 | Context Length | Up to 1M tokens |
 | License | Modified-MIT |
