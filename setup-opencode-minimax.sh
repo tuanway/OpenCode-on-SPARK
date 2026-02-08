@@ -53,6 +53,13 @@ MODEL_FILES_UD_Q3_XL=(
 # Sizes not enforced for UD-Q3_K_XL (files are large and sizes may vary slightly)
 MODEL_SIZES_UD_Q3_XL=(0 0 0)
 
+MODEL_FILES_GPT_OSS_120B_UD_Q4_XL=(
+    "gpt-oss-120b-UD-Q4_K_XL-00001-of-00002.gguf"
+    "gpt-oss-120b-UD-Q4_K_XL-00002-of-00002.gguf"
+)
+# Sizes not enforced for GPT-OSS-120B UD-Q4_K_XL (files are large and sizes may vary slightly)
+MODEL_SIZES_GPT_OSS_120B_UD_Q4_XL=(0 0)
+
 MODEL_FILES=("${MODEL_FILES_UD[@]}")
 MODEL_SIZES=("${MODEL_SIZES_UD[@]}")
 MODEL_KIND="gguf"
@@ -157,17 +164,15 @@ select_quant() {
             OPENCODE_MODEL_DISPLAY="MiniMax-M2.1 ($QUANT)"
             ;;
         GPT-OSS-120B)
-            MODEL_KIND="gguf_wget_discover"
+            MODEL_KIND="gguf"
             MODEL_REPO="unsloth/gpt-oss-120b-GGUF"
-            MODEL_SUBDIR="Q4_K_XL"
-            MODEL_NAME="gpt-oss-120b-Q4_K_XL"
+            MODEL_SUBDIR="UD-Q4_K_XL"
+            MODEL_NAME="gpt-oss-120b-UD-Q4_K_XL"
             MODEL_DIR_BASE="$HOME/models/gpt-oss"
-            MODEL_DIR="$MODEL_DIR_BASE/gpt-oss-120b-Q4_K_XL"
-            MODEL_FILES=()
-            MODEL_SIZES=()
-            MODEL_URL_BASE=""
+            MODEL_FILES=("${MODEL_FILES_GPT_OSS_120B_UD_Q4_XL[@]}")
+            MODEL_SIZES=("${MODEL_SIZES_GPT_OSS_120B_UD_Q4_XL[@]}")
             OPENCODE_MODEL_ID="gpt-oss-120b"
-            OPENCODE_MODEL_DISPLAY="gpt-oss-120b Q4_K_XL"
+            OPENCODE_MODEL_DISPLAY="gpt-oss-120b UD-Q4_K_XL"
             if ! $THINKING_MODE_SET; then
                 THINKING_MODE="high"
             fi
@@ -206,141 +211,6 @@ select_quant() {
 # Download model files
 download_model() {
     log_info "=== Downloading Model ($QUANT) ==="
-
-    if [[ "$MODEL_KIND" == "gguf_wget_discover" ]]; then
-        local api_url="https://huggingface.co/api/models/$MODEL_REPO/tree/main/$MODEL_SUBDIR?recursive=true"
-        local tree_json=""
-        local path_prefix="$MODEL_SUBDIR/"
-
-        mkdir -p "$MODEL_DIR"
-        cd "$MODEL_DIR"
-
-        log_info "Discovering GGUF files for $MODEL_REPO/$MODEL_SUBDIR ..."
-        tree_json=$(wget -qO- "$api_url" || true)
-        MODEL_FILES=()
-        MODEL_SIZES=()
-
-        if [[ -n "$tree_json" ]]; then
-            if command -v jq &> /dev/null; then
-                while IFS=$'\t' read -r rel size; do
-                    [[ -z "$rel" ]] && continue
-                    MODEL_FILES+=("$rel")
-                    if [[ "$size" =~ ^[0-9]+$ ]]; then
-                        MODEL_SIZES+=("$size")
-                    else
-                        MODEL_SIZES+=(0)
-                    fi
-                done < <(
-                    echo "$tree_json" | jq -r \
-                      --arg pref "$path_prefix" \
-                      '.[] | select(.type=="file" and (.path | endswith(".gguf"))) | [(.path | sub("^" + $pref; "")), (.size // 0)] | @tsv'
-                )
-            else
-                while IFS= read -r rel; do
-                    [[ -z "$rel" ]] && continue
-                    MODEL_FILES+=("$rel")
-                    MODEL_SIZES+=(0)
-                done < <(
-                    echo "$tree_json" \
-                      | grep -o "\"path\":\"$MODEL_SUBDIR/[^\"]*\\.gguf\"" \
-                      | sed -E "s#\"path\":\"$MODEL_SUBDIR/##; s#\"##g" \
-                      | sort -u
-                )
-            fi
-        fi
-
-        # Fallback when HF tree API is blocked/unreachable: probe common shard names directly.
-        if [[ ${#MODEL_FILES[@]} -eq 0 ]]; then
-            log_warn "HF tree API unavailable. Falling back to direct shard probing via wget."
-            local base_url="https://huggingface.co/$MODEL_REPO/resolve/main/$MODEL_SUBDIR"
-            local base_name=""
-            local shard_count=""
-            local found=false
-            local base_candidates=(
-                "gpt-oss-120b-Q4_K_XL"
-                "GPT-OSS-120B-Q4_K_XL"
-                "gpt-oss-120b-q4_k_xl"
-            )
-            local shard_candidates=(2 3 4 5 6 8)
-
-            for cand in "${base_candidates[@]}"; do
-                for n in "${shard_candidates[@]}"; do
-                    local probe_file
-                    probe_file=$(printf "%s-%05d-of-%05d.gguf" "$cand" 1 "$n")
-                    if wget --spider -q "$base_url/$probe_file"; then
-                        base_name="$cand"
-                        shard_count="$n"
-                        found=true
-                        break
-                    fi
-                done
-                if $found; then
-                    break
-                fi
-            done
-
-            if ! $found; then
-                log_error "Could not discover GPT-OSS shard filenames via API or probing."
-                return 1
-            fi
-
-            MODEL_FILES=()
-            MODEL_SIZES=()
-            for ((i=1; i<=shard_count; i++)); do
-                MODEL_FILES+=("$(printf "%s-%05d-of-%05d.gguf" "$base_name" "$i" "$shard_count")")
-                MODEL_SIZES+=(0)
-            done
-        fi
-
-        if [[ ${#MODEL_FILES[@]} -eq 0 ]]; then
-            log_error "No GGUF files discovered in $MODEL_REPO/$MODEL_SUBDIR"
-            return 1
-        fi
-
-        MODEL_URL_BASE="https://huggingface.co/$MODEL_REPO/resolve/main/$MODEL_SUBDIR"
-        log_info "Discovered ${#MODEL_FILES[@]} GGUF file(s). Starting downloads..."
-
-        local all_complete=true
-        for i in "${!MODEL_FILES[@]}"; do
-            local file="${MODEL_FILES[$i]}"
-            local size="${MODEL_SIZES[$i]}"
-            if check_file_complete "$file" "$size"; then
-                log_success "$file already exists"
-            else
-                all_complete=false
-            fi
-        done
-
-        if $all_complete; then
-            log_success "Model already fully downloaded ($(du -sh "$MODEL_DIR" | cut -f1))"
-            return 0
-        fi
-
-        local pids=()
-        local failed=false
-        for i in "${!MODEL_FILES[@]}"; do
-            local file="${MODEL_FILES[$i]}"
-            local size="${MODEL_SIZES[$i]}"
-            if ! check_file_complete "$file" "$size"; then
-                wget -c -q --show-progress "$MODEL_URL_BASE/$file" -O "$file" &
-                pids+=($!)
-            fi
-        done
-
-        for pid in "${pids[@]}"; do
-            if ! wait "$pid"; then
-                failed=true
-            fi
-        done
-
-        if $failed; then
-            log_error "Some downloads failed. Re-run the script to resume."
-            return 1
-        fi
-
-        log_success "GGUF download complete ($(du -sh "$MODEL_DIR" | cut -f1))"
-        return 0
-    fi
 
     mkdir -p "$MODEL_DIR"
     cd "$MODEL_DIR"
