@@ -13,7 +13,7 @@ NC='\033[0m'
 
 # Configuration
 MODEL_DIR_BASE="$HOME/models/minimax-m2.1"
-MODEL_VARIANTS=("UD-Q2_K_XL" "Q6_K" "UD-Q6_K_XL" "UD-Q4_K_XL")
+MODEL_VARIANTS=("UD-Q2_K_XL" "UD-Q3_K_XL" "UD-Q4_K_XL")
 MODEL_FILES_UD=(
     "MiniMax-M2.1-UD-Q2_K_XL-00001-of-00002.gguf"
     "MiniMax-M2.1-UD-Q2_K_XL-00002-of-00002.gguf"
@@ -22,26 +22,14 @@ MODEL_SIZES_UD=(
     49950511392
     35967481120
 )
-MODEL_FILES_Q6=(
-    "MiniMax-M2.1-Q6_K-00001-of-00004.gguf"
-    "MiniMax-M2.1-Q6_K-00002-of-00004.gguf"
-    "MiniMax-M2.1-Q6_K-00003-of-00004.gguf"
-    "MiniMax-M2.1-Q6_K-00004-of-00004.gguf"
-)
-MODEL_SIZES_Q6=(0 0 0 0)
-MODEL_FILES_UD_Q6_XL=(
-    "MiniMax-M2.1-UD-Q6_K_XL-00001-of-00004.gguf"
-    "MiniMax-M2.1-UD-Q6_K_XL-00002-of-00004.gguf"
-    "MiniMax-M2.1-UD-Q6_K_XL-00003-of-00004.gguf"
-    "MiniMax-M2.1-UD-Q6_K_XL-00004-of-00004.gguf"
-)
-MODEL_SIZES_UD_Q6_XL=(0 0 0 0)
 MODEL_FILES_UD_Q4_XL=(
     "MiniMax-M2.1-UD-Q4_K_XL-00001-of-00003.gguf"
     "MiniMax-M2.1-UD-Q4_K_XL-00002-of-00003.gguf"
     "MiniMax-M2.1-UD-Q4_K_XL-00003-of-00003.gguf"
 )
 MODEL_SIZES_UD_Q4_XL=(0 0 0)
+MODEL_FILES_UD_Q3_XL=()
+MODEL_SIZES_UD_Q3_XL=()
 SERVER_PORT=8080
 RPC_PORT=50052
 OPENCODE_CONFIG="$HOME/.config/opencode/opencode.json"
@@ -76,12 +64,9 @@ for v in "${MODEL_VARIANTS[@]}"; do
     if [[ "$v" == "UD-Q2_K_XL" ]]; then
         files=("${MODEL_FILES_UD[@]}")
         sizes=("${MODEL_SIZES_UD[@]}")
-    elif [[ "$v" == "Q6_K" ]]; then
-        files=("${MODEL_FILES_Q6[@]}")
-        sizes=("${MODEL_SIZES_Q6[@]}")
-    elif [[ "$v" == "UD-Q6_K_XL" ]]; then
-        files=("${MODEL_FILES_UD_Q6_XL[@]}")
-        sizes=("${MODEL_SIZES_UD_Q6_XL[@]}")
+    elif [[ "$v" == "UD-Q3_K_XL" ]]; then
+        files=("${MODEL_FILES_UD_Q3_XL[@]}")
+        sizes=("${MODEL_SIZES_UD_Q3_XL[@]}")
     else
         files=("${MODEL_FILES_UD_Q4_XL[@]}")
         sizes=("${MODEL_SIZES_UD_Q4_XL[@]}")
@@ -91,12 +76,18 @@ for v in "${MODEL_VARIANTS[@]}"; do
         found_any=true
         size=$(du -sh "$model_dir" 2>/dev/null | cut -f1)
         ok=true
-        for i in "${!files[@]}"; do
-            if ! check_file_complete "$model_dir/${files[$i]}" "${sizes[$i]}"; then
+        if [[ ${#files[@]} -gt 0 ]]; then
+            for i in "${!files[@]}"; do
+                if ! check_file_complete "$model_dir/${files[$i]}" "${sizes[$i]}"; then
+                    ok=false
+                    break
+                fi
+            done
+        else
+            if ! find "$model_dir" -maxdepth 3 -type f -name "*.gguf" | grep -q .; then
                 ok=false
-                break
             fi
-        done
+        fi
 
         echo "  Variant: $v"
         echo "  Path: $model_dir"

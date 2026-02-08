@@ -37,24 +37,6 @@ MODEL_SIZES_UD=(
     35967481120  # ~36GB
 )
 
-MODEL_FILES_Q6=(
-    "MiniMax-M2.1-Q6_K-00001-of-00004.gguf"
-    "MiniMax-M2.1-Q6_K-00002-of-00004.gguf"
-    "MiniMax-M2.1-Q6_K-00003-of-00004.gguf"
-    "MiniMax-M2.1-Q6_K-00004-of-00004.gguf"
-)
-# Sizes not enforced for Q6_K (files are large and sizes may vary slightly)
-MODEL_SIZES_Q6=(0 0 0 0)
-
-MODEL_FILES_UD_Q6_XL=(
-    "MiniMax-M2.1-UD-Q6_K_XL-00001-of-00004.gguf"
-    "MiniMax-M2.1-UD-Q6_K_XL-00002-of-00004.gguf"
-    "MiniMax-M2.1-UD-Q6_K_XL-00003-of-00004.gguf"
-    "MiniMax-M2.1-UD-Q6_K_XL-00004-of-00004.gguf"
-)
-# Sizes not enforced for UD-Q6_K_XL (files are large and sizes may vary slightly)
-MODEL_SIZES_UD_Q6_XL=(0 0 0 0)
-
 MODEL_FILES_UD_Q4_XL=(
     "MiniMax-M2.1-UD-Q4_K_XL-00001-of-00003.gguf"
     "MiniMax-M2.1-UD-Q4_K_XL-00002-of-00003.gguf"
@@ -65,6 +47,15 @@ MODEL_SIZES_UD_Q4_XL=(0 0 0)
 
 MODEL_FILES=("${MODEL_FILES_UD[@]}")
 MODEL_SIZES=("${MODEL_SIZES_UD[@]}")
+MODEL_KIND="gguf"
+MODEL_HF_INCLUDE=""
+OPENCODE_MODEL_ID="minimax-m2.1"
+OPENCODE_MODEL_DISPLAY="MiniMax-M2.1 ($QUANT)"
+THINKING_MODE="normal"
+THINKING_MODE_SET=false
+MODEL_TEMPERATURE="1.0"
+MODEL_TOP_P="0.95"
+MODEL_MAX_TOKENS="4096"
 LLAMA_CPP_DIR="$HOME/llama.cpp"
 SERVER_PORT=8080
 CTX_SIZE=131072
@@ -128,43 +119,104 @@ download_file() {
 select_quant() {
     case "$QUANT" in
         UD-Q2_K_XL)
+            MODEL_KIND="gguf"
+            MODEL_REPO="unsloth/MiniMax-M2.1-GGUF"
             MODEL_SUBDIR="UD-Q2_K_XL"
             MODEL_NAME="MiniMax-M2.1-UD-Q2_K_XL"
             MODEL_FILES=("${MODEL_FILES_UD[@]}")
             MODEL_SIZES=("${MODEL_SIZES_UD[@]}")
-            ;;
-        Q6_K)
-            MODEL_SUBDIR="Q6_K"
-            MODEL_NAME="MiniMax-M2.1-Q6_K"
-            MODEL_FILES=("${MODEL_FILES_Q6[@]}")
-            MODEL_SIZES=("${MODEL_SIZES_Q6[@]}")
-            ;;
-        UD-Q6_K_XL)
-            MODEL_SUBDIR="UD-Q6_K_XL"
-            MODEL_NAME="MiniMax-M2.1-UD-Q6_K_XL"
-            MODEL_FILES=("${MODEL_FILES_UD_Q6_XL[@]}")
-            MODEL_SIZES=("${MODEL_SIZES_UD_Q6_XL[@]}")
+            OPENCODE_MODEL_ID="minimax-m2.1"
+            OPENCODE_MODEL_DISPLAY="MiniMax-M2.1 ($QUANT)"
             ;;
         UD-Q4_K_XL)
+            MODEL_KIND="gguf"
+            MODEL_REPO="unsloth/MiniMax-M2.1-GGUF"
             MODEL_SUBDIR="UD-Q4_K_XL"
             MODEL_NAME="MiniMax-M2.1-UD-Q4_K_XL"
             MODEL_FILES=("${MODEL_FILES_UD_Q4_XL[@]}")
             MODEL_SIZES=("${MODEL_SIZES_UD_Q4_XL[@]}")
+            OPENCODE_MODEL_ID="minimax-m2.1"
+            OPENCODE_MODEL_DISPLAY="MiniMax-M2.1 ($QUANT)"
+            ;;
+        UD-Q3_K_XL)
+            MODEL_KIND="gguf_snapshot"
+            MODEL_REPO="unsloth/MiniMax-M2.1-GGUF"
+            MODEL_SUBDIR=""
+            MODEL_NAME="MiniMax-M2.1-UD-Q3_K_XL"
+            MODEL_DIR_BASE="$HOME/models/minimax-m2.1"
+            MODEL_DIR="$MODEL_DIR_BASE/UD-Q3_K_XL"
+            MODEL_HF_INCLUDE="UD-Q3_K_XL/*"
+            MODEL_FILES=()
+            MODEL_SIZES=()
+            MODEL_URL_BASE=""
+            OPENCODE_MODEL_ID="minimax-m2.1"
+            OPENCODE_MODEL_DISPLAY="MiniMax-M2.1 ($QUANT)"
+            ;;
+        GPT-OSS-120B)
+            MODEL_KIND="gguf_snapshot"
+            MODEL_REPO="unsloth/gpt-oss-120b-GGUF"
+            MODEL_SUBDIR=""
+            MODEL_NAME="gpt-oss-120b-Q4_K_XL"
+            MODEL_DIR_BASE="$HOME/models/gpt-oss"
+            MODEL_DIR="$MODEL_DIR_BASE/gpt-oss-120b-Q4_K_XL"
+            MODEL_HF_INCLUDE="Q4_K_XL/*"
+            MODEL_FILES=()
+            MODEL_SIZES=()
+            MODEL_URL_BASE=""
+            OPENCODE_MODEL_ID="gpt-oss-120b"
+            OPENCODE_MODEL_DISPLAY="gpt-oss-120b Q4_K_XL"
+            if ! $THINKING_MODE_SET; then
+                THINKING_MODE="high"
+            fi
             ;;
         *)
             log_error "Unknown quant: $QUANT"
-            log_info "Supported quants: UD-Q2_K_XL, Q6_K, UD-Q6_K_XL, UD-Q4_K_XL"
+            log_info "Supported options: UD-Q2_K_XL, UD-Q3_K_XL, UD-Q4_K_XL, GPT-OSS-120B"
             exit 1
             ;;
     esac
 
-    MODEL_DIR="$MODEL_DIR_BASE/$MODEL_SUBDIR"
-    MODEL_URL_BASE="https://huggingface.co/$MODEL_REPO/resolve/main/$MODEL_SUBDIR"
+    if [[ "$MODEL_KIND" == "gguf" ]]; then
+        MODEL_DIR="$MODEL_DIR_BASE/$MODEL_SUBDIR"
+        MODEL_URL_BASE="https://huggingface.co/$MODEL_REPO/resolve/main/$MODEL_SUBDIR"
+    fi
+
+    case "$THINKING_MODE" in
+        high)
+            MODEL_TEMPERATURE="0.6"
+            MODEL_TOP_P="0.9"
+            MODEL_MAX_TOKENS="8192"
+            ;;
+        normal)
+            MODEL_TEMPERATURE="1.0"
+            MODEL_TOP_P="0.95"
+            MODEL_MAX_TOKENS="4096"
+            ;;
+        *)
+            log_error "Unknown thinking mode: $THINKING_MODE"
+            log_info "Supported thinking modes: normal, high"
+            exit 1
+            ;;
+    esac
 }
 
 # Download model files
 download_model() {
-    log_info "=== Downloading MiniMax-M2.1 ($QUANT) ==="
+    log_info "=== Downloading Model ($QUANT) ==="
+
+    if [[ "$MODEL_KIND" == "gguf_snapshot" ]]; then
+        mkdir -p "$MODEL_DIR"
+        if ! command -v huggingface-cli &> /dev/null; then
+            log_error "huggingface-cli not found (required for snapshot downloads)"
+            log_info "Install with: pip install -U huggingface_hub"
+            return 1
+        fi
+
+        log_info "Downloading GGUF snapshot from $MODEL_REPO (include: $MODEL_HF_INCLUDE)"
+        huggingface-cli download "$MODEL_REPO" --include "$MODEL_HF_INCLUDE" --local-dir "$MODEL_DIR" --resume-download
+        log_success "GGUF snapshot download complete ($(du -sh "$MODEL_DIR" | cut -f1))"
+        return 0
+    fi
 
     mkdir -p "$MODEL_DIR"
     cd "$MODEL_DIR"
@@ -379,25 +431,28 @@ generate_config() {
     local config_file="$OPENCODE_CONFIG_DIR/opencode.json"
 
     # Always regenerate to ensure correct settings
-    cat > "$config_file" << 'JSONEOF'
+    cat > "$config_file" << JSONEOF
 {
   "$schema": "https://opencode.ai/config.json",
   "provider": {
     "llama-cpp": {
       "npm": "@ai-sdk/openai-compatible",
-      "name": "MiniMax-M2.1 (llama.cpp)",
+      "name": "Local Model (llama.cpp)",
       "options": {
         "baseURL": "http://localhost:8080/v1"
       },
       "models": {
-        "minimax-m2.1": {
-          "name": "MiniMax-M2.1 ($QUANT)",
-          "tools": true
+        "$OPENCODE_MODEL_ID": {
+          "name": "$OPENCODE_MODEL_DISPLAY",
+          "tools": true,
+          "temperature": $MODEL_TEMPERATURE,
+          "topP": $MODEL_TOP_P,
+          "maxTokens": $MODEL_MAX_TOKENS
         }
       }
     }
   },
-  "model": "llama-cpp/minimax-m2.1"
+  "model": "llama-cpp/$OPENCODE_MODEL_ID"
 }
 JSONEOF
 
@@ -429,7 +484,12 @@ launch_server() {
     fi
 
     # Check if model exists
-    local model_path="$MODEL_DIR/${MODEL_FILES[0]}"
+    local model_path=""
+    if [[ ${#MODEL_FILES[@]} -gt 0 ]]; then
+        model_path="$MODEL_DIR/${MODEL_FILES[0]}"
+    else
+        model_path=$(find "$MODEL_DIR" -maxdepth 3 -type f -name "*.gguf" | sort | head -1)
+    fi
     if [[ ! -f "$model_path" ]]; then
         log_error "Model not found: $model_path"
         log_info "Run with --download-only first"
@@ -544,18 +604,24 @@ show_status() {
     echo
 
     # Model status
-    echo "Model: MiniMax-M2.1 ($QUANT)"
+    echo "Model: $OPENCODE_MODEL_DISPLAY"
     if [[ -d "$MODEL_DIR" ]]; then
         local size=$(du -sh "$MODEL_DIR" 2>/dev/null | cut -f1)
         local ok=true
-        for i in "${!MODEL_FILES[@]}"; do
-            local file="${MODEL_FILES[$i]}"
-            local fsize="${MODEL_SIZES[$i]}"
-            if ! check_file_complete "$MODEL_DIR/$file" "$fsize"; then
+        if [[ ${#MODEL_FILES[@]} -gt 0 ]]; then
+            for i in "${!MODEL_FILES[@]}"; do
+                local file="${MODEL_FILES[$i]}"
+                local fsize="${MODEL_SIZES[$i]}"
+                if ! check_file_complete "$MODEL_DIR/$file" "$fsize"; then
+                    ok=false
+                    break
+                fi
+            done
+        else
+            if ! find "$MODEL_DIR" -maxdepth 3 -type f -name "*.gguf" | grep -q .; then
                 ok=false
-                break
             fi
-        done
+        fi
         if $ok; then
             echo -e "  Status: ${GREEN}Downloaded${NC} ($size)"
         else
@@ -643,7 +709,7 @@ test_inference() {
             "model": "minimax-m2.1",
             "messages": [{"role": "user", "content": "Write a hello world function in Python."}],
             "max_tokens": 100,
-            "temperature": 1.0
+            "temperature": '"$MODEL_TEMPERATURE"'
         }')
 
     local content=$(echo "$response" | jq -r '.choices[0].message.content // .error.message // "No response"')
@@ -718,6 +784,11 @@ main() {
                 QUANT="$2"
                 shift 2
                 ;;
+            --thinking)
+                THINKING_MODE="$2"
+                THINKING_MODE_SET=true
+                shift 2
+                ;;
             --help|-h)
                 echo "Usage: $0 [OPTIONS]"
                 echo
@@ -733,7 +804,8 @@ main() {
                 echo "  --rpc-bind HOST   RPC server bind address (default: 0.0.0.0)"
                 echo "  --rpc HOST:PORT   Add a llama.cpp --rpc target (repeatable)"
                 echo "  --rpc-hosts CSV   Comma-separated list of rpc targets"
-                echo "  --quant QUANT     Model quant (UD-Q2_K_XL, Q6_K, UD-Q6_K_XL, UD-Q4_K_XL)"
+                echo "  --quant QUANT     Model option (UD-Q2_K_XL, UD-Q3_K_XL, UD-Q4_K_XL, GPT-OSS-120B)"
+                echo "  --thinking MODE   Thinking preset (normal, high)"
                 echo "  --help            Show this help"
                 echo
                 echo "Without options, performs full setup:"

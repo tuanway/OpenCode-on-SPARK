@@ -8,7 +8,7 @@ This repository provides scripts to set up a complete local AI coding assistant 
 
 - **Hardware**: NVIDIA DGX Spark with GB10 GPU (128GB unified memory)
 - **Model**: [MiniMax-M2.1](https://huggingface.co/unsloth/MiniMax-M2.1-GGUF) - 456B MoE (21B active), optimized for coding and agentic tasks
-- **Quantization**: UD-Q2_K_XL (~86GB, default), Q6_K, UD-Q6_K_XL, UD-Q4_K_XL
+- **Quantization/Options**: UD-Q2_K_XL (~86GB, default), UD-Q3_K_XL, UD-Q4_K_XL, GPT-OSS-120B
 - **Runtime**: [llama.cpp](https://github.com/ggml-org/llama.cpp) with CUDA backend
 - **Frontend**: [OpenCode](https://opencode.ai) - AI coding assistant CLI
 
@@ -61,14 +61,14 @@ The script automates the entire setup process:
 # Full setup (first time)
 ./setup-opencode-minimax.sh
 
-# Full setup with Q6_K quant (larger, higher quality)
-./setup-opencode-minimax.sh --quant Q6_K
-
-# Full setup with UD-Q6_K_XL quant (larger, higher quality)
-./setup-opencode-minimax.sh --quant UD-Q6_K_XL
-
 # Full setup with UD-Q4_K_XL quant (4-bit XL)
 ./setup-opencode-minimax.sh --quant UD-Q4_K_XL
+
+# Full setup with UD-Q3_K_XL quant (3-bit XL)
+./setup-opencode-minimax.sh --quant UD-Q3_K_XL
+
+# Download GPT-OSS-120B (Q4_K_XL GGUF snapshot)
+./setup-opencode-minimax.sh --quant GPT-OSS-120B --download-only
 
 # Check status
 ./status.sh
@@ -82,14 +82,11 @@ The script automates the entire setup process:
 # Launch server only (after download)
 ./setup-opencode-minimax.sh --launch-only
 
-# Launch Q6_K server only (after download)
-./setup-opencode-minimax.sh --launch-only --quant Q6_K
-
-# Launch UD-Q6_K_XL server only (after download)
-./setup-opencode-minimax.sh --launch-only --quant UD-Q6_K_XL
-
 # Launch UD-Q4_K_XL server only (after download)
 ./setup-opencode-minimax.sh --launch-only --quant UD-Q4_K_XL
+
+# Launch UD-Q3_K_XL server only (after download)
+./setup-opencode-minimax.sh --launch-only --quant UD-Q3_K_XL
 
 # Test inference
 ./setup-opencode-minimax.sh --test
@@ -117,27 +114,6 @@ You can also pass a comma-separated list:
 Note: The primary node still needs the model files and `llama-server`. Run full setup there first.
 
 See `docs/MULTI_NODE.md` for details.
-
-### UD-Q6_K_XL on Two DGX Sparks (Example)
-
-On the worker node:
-```bash
-./setup-opencode-minimax.sh --rpc-worker
-```
-
-On the primary node:
-```bash
-# Download model/build/config for UD-Q6_K_XL
-./setup-opencode-minimax.sh --quant UD-Q6_K_XL --download-only
-
-# Launch with one worker attached
-./setup-opencode-minimax.sh --launch-only --quant UD-Q6_K_XL --rpc 10.0.0.2:50052
-```
-
-If you have two workers, add another `--rpc` target:
-```bash
-./setup-opencode-minimax.sh --launch-only --quant UD-Q6_K_XL --rpc 10.0.0.2:50052 --rpc 10.0.0.3:50052
-```
 
 ## Scripts
 
@@ -176,7 +152,7 @@ The script will automatically:
 | Architecture | Mixture of Experts (MoE) |
 | Total Parameters | 456B |
 | Active Parameters | 21B |
-| Quantization | UD-Q2_K_XL (default), Q6_K, UD-Q6_K_XL, UD-Q4_K_XL |
+| Quantization | UD-Q2_K_XL (default), UD-Q3_K_XL, UD-Q4_K_XL, GPT-OSS-120B |
 | Size on Disk | ~86GB |
 | Context Length | Up to 1M tokens |
 | License | Modified-MIT |
