@@ -45,6 +45,14 @@ MODEL_FILES_UD_Q4_XL=(
 # Sizes not enforced for UD-Q4_K_XL (files are large and sizes may vary slightly)
 MODEL_SIZES_UD_Q4_XL=(0 0 0)
 
+MODEL_FILES_UD_Q3_XL=(
+    "MiniMax-M2.1-UD-Q3_K_XL-00001-of-00003.gguf"
+    "MiniMax-M2.1-UD-Q3_K_XL-00002-of-00003.gguf"
+    "MiniMax-M2.1-UD-Q3_K_XL-00003-of-00003.gguf"
+)
+# Sizes not enforced for UD-Q3_K_XL (files are large and sizes may vary slightly)
+MODEL_SIZES_UD_Q3_XL=(0 0 0)
+
 MODEL_FILES=("${MODEL_FILES_UD[@]}")
 MODEL_SIZES=("${MODEL_SIZES_UD[@]}")
 MODEL_KIND="gguf"
@@ -139,16 +147,13 @@ select_quant() {
             OPENCODE_MODEL_DISPLAY="MiniMax-M2.1 ($QUANT)"
             ;;
         UD-Q3_K_XL)
-            MODEL_KIND="gguf_snapshot"
+            MODEL_KIND="gguf"
             MODEL_REPO="unsloth/MiniMax-M2.1-GGUF"
-            MODEL_SUBDIR=""
+            MODEL_SUBDIR="UD-Q3_K_XL"
             MODEL_NAME="MiniMax-M2.1-UD-Q3_K_XL"
             MODEL_DIR_BASE="$HOME/models/minimax-m2.1"
-            MODEL_DIR="$MODEL_DIR_BASE/UD-Q3_K_XL"
-            MODEL_HF_INCLUDE="UD-Q3_K_XL/*"
-            MODEL_FILES=()
-            MODEL_SIZES=()
-            MODEL_URL_BASE=""
+            MODEL_FILES=("${MODEL_FILES_UD_Q3_XL[@]}")
+            MODEL_SIZES=("${MODEL_SIZES_UD_Q3_XL[@]}")
             OPENCODE_MODEL_ID="minimax-m2.1"
             OPENCODE_MODEL_DISPLAY="MiniMax-M2.1 ($QUANT)"
             ;;
