@@ -77,6 +77,8 @@ OPENCODE_CONFIG_DIR="$HOME/.config/opencode"
 RPC_PORT=50052
 RPC_BIND="0.0.0.0"
 RPC_TARGETS=()
+CHAT_TEMPLATE_FILE=""
+LLAMA_SERVER_EXTRA_ARGS=()
 
 # Colors
 RED='\033[0;31m'
@@ -519,6 +521,15 @@ launch_server() {
         done
     fi
 
+    local tool_calling_args=(--jinja)
+    if [[ -n "$CHAT_TEMPLATE_FILE" ]]; then
+        tool_calling_args+=(--chat-template-file "$CHAT_TEMPLATE_FILE")
+    fi
+
+    if [[ ${#LLAMA_SERVER_EXTRA_ARGS[@]} -gt 0 ]]; then
+        log_info "  Extra llama-server args: ${LLAMA_SERVER_EXTRA_ARGS[*]}"
+    fi
+
     nohup "$server_bin" \
         -m "$model_path" \
         --host 0.0.0.0 \
@@ -526,7 +537,8 @@ launch_server() {
         --ctx-size "$CTX_SIZE" \
         --n-gpu-layers 99 \
         "${rpc_args[@]}" \
-        --jinja \
+        "${tool_calling_args[@]}" \
+        "${LLAMA_SERVER_EXTRA_ARGS[@]}" \
         > /tmp/llama-server-minimax-m2.1.log 2>&1 &
 
     local server_pid=$!
@@ -774,6 +786,14 @@ main() {
                 done
                 shift 2
                 ;;
+            --chat-template-file)
+                CHAT_TEMPLATE_FILE="$2"
+                shift 2
+                ;;
+            --llama-arg)
+                LLAMA_SERVER_EXTRA_ARGS+=("$2")
+                shift 2
+                ;;
             --quant)
                 QUANT="$2"
                 shift 2
@@ -798,6 +818,8 @@ main() {
                 echo "  --rpc-bind HOST   RPC server bind address (default: 0.0.0.0)"
                 echo "  --rpc HOST:PORT   Add a llama.cpp --rpc target (repeatable)"
                 echo "  --rpc-hosts CSV   Comma-separated list of rpc targets"
+                echo "  --chat-template-file PATH  Pass llama-server --chat-template-file"
+                echo "  --llama-arg ARG   Extra llama-server arg (repeatable)"
                 echo "  --quant QUANT     Model option (UD-Q2_K_XL, UD-Q3_K_XL, UD-Q4_K_XL, GPT-OSS-120B)"
                 echo "  --thinking MODE   Thinking preset (normal, high)"
                 echo "  --help            Show this help"
