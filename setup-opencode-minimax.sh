@@ -274,6 +274,15 @@ select_quant() {
             fi
             OPENCODE_MODEL_DISPLAY="$MODEL_DISPLAY_BASE ($QUANT)"
             ;;
+        UD-Q6_K_XL|Q6_K_XL)
+            MODEL_KIND="gguf"
+            MODEL_SUBDIR="UD-Q6_K_XL"
+            MODEL_NAME="${MODEL_FILE_PREFIX}-${MODEL_SUBDIR}"
+            # Use Hugging Face tree discovery for Q6 files/shard counts.
+            MODEL_FILES=()
+            MODEL_SIZES=()
+            OPENCODE_MODEL_DISPLAY="$MODEL_DISPLAY_BASE (UD-Q6_K_XL)"
+            ;;
         GPT-OSS-120B)
             MODEL_KIND="gguf"
             MODEL_SUBDIR="UD-Q4_K_XL"
@@ -287,7 +296,7 @@ select_quant() {
             ;;
         *)
             log_error "Unknown quant: $QUANT"
-            log_info "Supported options: UD-Q2_K_XL, UD-Q3_K_XL, UD-Q4_K_XL, GPT-OSS-120B"
+            log_info "Supported options: UD-Q2_K_XL, UD-Q3_K_XL, UD-Q4_K_XL, UD-Q6_K_XL (or Q6_K_XL), GPT-OSS-120B"
             exit 1
             ;;
     esac
@@ -944,7 +953,7 @@ main() {
                 echo "  --rpc-hosts CSV   Comma-separated list of rpc targets"
                 echo "  --chat-template-file PATH  Pass llama-server --chat-template-file"
                 echo "  --llama-arg ARG   Extra llama-server arg (repeatable)"
-                echo "  --quant QUANT     Quant option (UD-Q2_K_XL, UD-Q3_K_XL, UD-Q4_K_XL, GPT-OSS-120B)"
+                echo "  --quant QUANT     Quant option (UD-Q2_K_XL, UD-Q3_K_XL, UD-Q4_K_XL, UD-Q6_K_XL|Q6_K_XL, GPT-OSS-120B)"
                 echo "  --thinking MODE   Thinking preset (normal, high)"
                 echo "  --help            Show this help"
                 echo

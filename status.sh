@@ -21,7 +21,7 @@ OPENCODE_CONFIG="$HOME/.config/opencode/opencode.json"
 
 MODEL_DISPLAY_BASE="MiniMax-M2.1"
 MODEL_DIR_BASE="$HOME/models/minimax-m2.1"
-MODEL_VARIANTS=("UD-Q2_K_XL" "UD-Q3_K_XL" "UD-Q4_K_XL")
+MODEL_VARIANTS=("UD-Q2_K_XL" "UD-Q3_K_XL" "UD-Q4_K_XL" "UD-Q6_K_XL")
 MODEL_FILE_PREFIX="MiniMax-M2.1"
 
 # MiniMax-M2.1 known file lists (sizes only enforced for UD-Q2_K_XL)
@@ -333,4 +333,3 @@ else
     echo "  • Full setup:   ./setup-opencode-minimax.sh"
 fi
 echo
-
