@@ -112,6 +112,48 @@ build_sharded_gguf_file_list() {
     done
 }
 
+discover_model_files_from_hf() {
+    if [[ "$MODEL_KIND" != "gguf" ]]; then
+        return 1
+    fi
+
+    if ! command -v curl &> /dev/null; then
+        log_error "curl not found; cannot auto-discover model files"
+        return 1
+    fi
+    if ! command -v jq &> /dev/null; then
+        log_error "jq not found; cannot auto-discover model files"
+        return 1
+    fi
+
+    local api_url="https://huggingface.co/api/models/$MODEL_REPO/tree/main/$MODEL_SUBDIR"
+    log_info "Discovering model files from Hugging Face: $MODEL_REPO/$MODEL_SUBDIR"
+
+    local listing
+    if ! listing=$(curl -fsSL "$api_url" 2>/dev/null); then
+        log_error "Failed to query Hugging Face model tree: $api_url"
+        return 1
+    fi
+
+    local entries
+    entries=$(echo "$listing" | jq -r '.[] | select(.type=="file" and (.path | endswith(".gguf"))) | [.path, (.size // 0)] | @tsv')
+    if [[ -z "$entries" ]]; then
+        log_error "No .gguf files found in $MODEL_REPO/$MODEL_SUBDIR"
+        return 1
+    fi
+
+    MODEL_FILES=()
+    MODEL_SIZES=()
+    while IFS=$'\t' read -r path size; do
+        [[ -z "$path" ]] && continue
+        MODEL_FILES+=("${path##*/}")
+        MODEL_SIZES+=("${size:-0}")
+    done <<< "$entries"
+
+    log_success "Discovered ${#MODEL_FILES[@]} model file(s) in $MODEL_SUBDIR"
+    return 0
+}
+
 select_model_family() {
     case "$MODEL" in
         minimax-m2.1)
@@ -193,12 +235,16 @@ select_quant() {
             MODEL_KIND="gguf"
             MODEL_SUBDIR="UD-Q2_K_XL"
             MODEL_NAME="${MODEL_FILE_PREFIX}-${MODEL_SUBDIR}"
-            build_sharded_gguf_file_list "$MODEL_FILE_PREFIX" "$MODEL_SUBDIR" 2
+            if [[ "$MODEL" == "minimax-m2.1" ]]; then
+                build_sharded_gguf_file_list "$MODEL_FILE_PREFIX" "$MODEL_SUBDIR" 2
+            else
+                MODEL_FILES=()
+            fi
             # Only enforce known sizes for MiniMax-M2.1 UD-Q2_K_XL.
             if [[ "$MODEL" == "minimax-m2.1" ]]; then
                 MODEL_SIZES=("${MODEL_SIZES_UD[@]}")
             else
-                MODEL_SIZES=(0 0)
+                MODEL_SIZES=()
             fi
             OPENCODE_MODEL_DISPLAY="$MODEL_DISPLAY_BASE ($QUANT)"
             ;;
@@ -206,16 +252,26 @@ select_quant() {
             MODEL_KIND="gguf"
             MODEL_SUBDIR="UD-Q4_K_XL"
             MODEL_NAME="${MODEL_FILE_PREFIX}-${MODEL_SUBDIR}"
-            build_sharded_gguf_file_list "$MODEL_FILE_PREFIX" "$MODEL_SUBDIR" 3
-            MODEL_SIZES=(0 0 0)
+            if [[ "$MODEL" == "minimax-m2.1" ]]; then
+                build_sharded_gguf_file_list "$MODEL_FILE_PREFIX" "$MODEL_SUBDIR" 3
+                MODEL_SIZES=(0 0 0)
+            else
+                MODEL_FILES=()
+                MODEL_SIZES=()
+            fi
             OPENCODE_MODEL_DISPLAY="$MODEL_DISPLAY_BASE ($QUANT)"
             ;;
         UD-Q3_K_XL)
             MODEL_KIND="gguf"
             MODEL_SUBDIR="UD-Q3_K_XL"
             MODEL_NAME="${MODEL_FILE_PREFIX}-${MODEL_SUBDIR}"
-            build_sharded_gguf_file_list "$MODEL_FILE_PREFIX" "$MODEL_SUBDIR" 3
-            MODEL_SIZES=(0 0 0)
+            if [[ "$MODEL" == "minimax-m2.1" ]]; then
+                build_sharded_gguf_file_list "$MODEL_FILE_PREFIX" "$MODEL_SUBDIR" 3
+                MODEL_SIZES=(0 0 0)
+            else
+                MODEL_FILES=()
+                MODEL_SIZES=()
+            fi
             OPENCODE_MODEL_DISPLAY="$MODEL_DISPLAY_BASE ($QUANT)"
             ;;
         GPT-OSS-120B)
@@ -263,6 +319,10 @@ select_quant() {
 # Download model files
 download_model() {
     log_info "=== Downloading Model ($QUANT) ==="
+
+    if [[ ${#MODEL_FILES[@]} -eq 0 ]]; then
+        discover_model_files_from_hf
+    fi
 
     mkdir -p "$MODEL_DIR"
     cd "$MODEL_DIR"
