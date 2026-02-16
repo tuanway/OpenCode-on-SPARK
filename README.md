@@ -2,12 +2,14 @@
 
 Run [OpenCode](https://opencode.ai) with local LLMs on NVIDIA DGX Spark using llama.cpp.
 
-This repository provides scripts to set up a complete local AI coding assistant environment on DGX Spark hardware, using MiniMax-M2.1 as the underlying model.
+This repository provides scripts to set up a complete local AI coding assistant environment on DGX Spark hardware, using local GGUF models (MiniMax-M2.1 by default, optionally MiniMax-M2.5).
 
 ## Overview
 
 - **Hardware**: NVIDIA DGX Spark with GB10 GPU (128GB unified memory)
-- **Model**: [MiniMax-M2.1](https://huggingface.co/unsloth/MiniMax-M2.1-GGUF) - 456B MoE (21B active), optimized for coding and agentic tasks
+- **Models**:
+  - [MiniMax-M2.1](https://huggingface.co/unsloth/MiniMax-M2.1-GGUF) (default)
+  - MiniMax-M2.5 (optional: `./setup-opencode-minimax.sh --model minimax-m2.5`)
 - **Quantization/Options**: UD-Q2_K_XL (~86GB, default), UD-Q3_K_XL, UD-Q4_K_XL, GPT-OSS-120B
 - **Runtime**: [llama.cpp](https://github.com/ggml-org/llama.cpp) with CUDA backend
 - **Frontend**: [OpenCode](https://opencode.ai) - AI coding assistant CLI
@@ -63,6 +65,9 @@ The script automates the entire setup process:
 
 # Full setup with UD-Q4_K_XL quant (4-bit XL)
 ./setup-opencode-minimax.sh --quant UD-Q4_K_XL
+
+# Full setup for MiniMax-M2.5 (if your HF repo/files match the defaults in the script)
+./setup-opencode-minimax.sh --model minimax-m2.5
 
 # Full setup with UD-Q3_K_XL quant (3-bit XL)
 ./setup-opencode-minimax.sh --quant UD-Q3_K_XL
@@ -227,9 +232,9 @@ Or launch manually with custom settings:
 
 ### Server won't start
 
-Check the log file:
+Check the log file (model-specific):
 ```bash
-tail -100 /tmp/llama-server-minimax-m2.1.log
+tail -100 /tmp/llama-server-minimax-m2.1.log   # or: /tmp/llama-server-minimax-m2.5.log
 ```
 
 ### Out of memory
@@ -247,6 +252,7 @@ nvidia-smi
 
 # Verify all layers on GPU
 grep "offloading" /tmp/llama-server-minimax-m2.1.log
+grep "offloading" /tmp/llama-server-minimax-m2.5.log
 ```
 
 ### OpenCode can't connect

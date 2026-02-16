@@ -92,6 +92,34 @@ OpenCode looks for configuration in these locations (in order):
 }
 ```
 
+## MiniMax-M2.5 (Same llama.cpp Setup)
+
+If you have MiniMax-M2.5 served via llama.cpp on the same `baseURL`, just change the model id:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "llama-cpp": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "MiniMax-M2.5 (llama.cpp)",
+      "options": {
+        "baseURL": "http://localhost:8080/v1"
+      },
+      "models": {
+        "minimax-m2.5": {
+          "name": "MiniMax-M2.5 UD-Q2_K_XL",
+          "tools": true,
+          "temperature": 1.0,
+          "topP": 0.95
+        }
+      }
+    }
+  },
+  "model": "llama-cpp/minimax-m2.5"
+}
+```
+
 ## Configuration Options
 
 ### Provider Options
@@ -173,6 +201,7 @@ For OpenCode's agentic features (file editing, running commands), the model must
 
 Models with good tool support:
 - MiniMax-M2.1 (excellent)
+- MiniMax-M2.5 (excellent)
 - Qwen3 series (very good)
 - Llama-3.1+ (good)
 - Mistral/Mixtral (good)

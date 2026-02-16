@@ -2,8 +2,9 @@
 #
 # setup-opencode-minimax.sh
 #
-# Complete setup script for OpenCode + MiniMax-M2.1 on NVIDIA GPUs:
-# - Downloads MiniMax-M2.1 UD-Q2_K_XL model (~86GB)
+# Complete setup script for OpenCode + local GGUF models on NVIDIA GPUs:
+# - Defaults to MiniMax-M2.1 UD-Q2_K_XL (~86GB)
+# - Supports MiniMax-M2.5 (same quant subdirs, if available in your HF repo)
 # - Builds llama.cpp with CUDA support (if not already built)
 # - Installs OpenCode CLI
 # - Configures OpenCode to use local llama.cpp server
@@ -17,12 +18,16 @@
 set -e
 
 # Configuration
+MODEL="minimax-m2.1" # minimax-m2.1 | minimax-m2.5 | gpt-oss-120b
+
 MODEL_REPO="unsloth/MiniMax-M2.1-GGUF"
 MODEL_SUBDIR="UD-Q2_K_XL"
 MODEL_NAME="MiniMax-M2.1-UD-Q2_K_XL"
 MODEL_DIR_BASE="$HOME/models/minimax-m2.1"
 MODEL_DIR="$MODEL_DIR_BASE/$MODEL_SUBDIR"
 MODEL_URL_BASE="https://huggingface.co/$MODEL_REPO/resolve/main/$MODEL_SUBDIR"
+MODEL_FILE_PREFIX="MiniMax-M2.1"
+MODEL_DISPLAY_BASE="MiniMax-M2.1"
 
 # Default quant
 QUANT="UD-Q2_K_XL"
@@ -92,6 +97,56 @@ log_success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
 log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 
+build_sharded_gguf_file_list() {
+    local prefix="$1"      # e.g. MiniMax-M2.1
+    local subdir="$2"      # e.g. UD-Q2_K_XL
+    local parts="$3"       # e.g. 2, 3
+
+    MODEL_FILES=()
+    local total
+    total=$(printf "%05d" "$parts")
+    for ((i=1; i<=parts; i++)); do
+        local part
+        part=$(printf "%05d" "$i")
+        MODEL_FILES+=("${prefix}-${subdir}-${part}-of-${total}.gguf")
+    done
+}
+
+select_model_family() {
+    case "$MODEL" in
+        minimax-m2.1)
+            MODEL_KIND="gguf"
+            MODEL_REPO="unsloth/MiniMax-M2.1-GGUF"
+            MODEL_DIR_BASE="$HOME/models/minimax-m2.1"
+            MODEL_FILE_PREFIX="MiniMax-M2.1"
+            MODEL_DISPLAY_BASE="MiniMax-M2.1"
+            OPENCODE_MODEL_ID="minimax-m2.1"
+            ;;
+        minimax-m2.5)
+            MODEL_KIND="gguf"
+            MODEL_REPO="unsloth/MiniMax-M2.5-GGUF"
+            MODEL_DIR_BASE="$HOME/models/minimax-m2.5"
+            MODEL_FILE_PREFIX="MiniMax-M2.5"
+            MODEL_DISPLAY_BASE="MiniMax-M2.5"
+            OPENCODE_MODEL_ID="minimax-m2.5"
+            ;;
+        gpt-oss-120b)
+            MODEL_KIND="gguf"
+            MODEL_REPO="unsloth/gpt-oss-120b-GGUF"
+            MODEL_DIR_BASE="$HOME/models/gpt-oss"
+            MODEL_FILE_PREFIX="gpt-oss-120b"
+            MODEL_DISPLAY_BASE="gpt-oss-120b"
+            OPENCODE_MODEL_ID="gpt-oss-120b"
+            QUANT="GPT-OSS-120B"
+            ;;
+        *)
+            log_error "Unknown model: $MODEL"
+            log_info "Supported models: minimax-m2.1, minimax-m2.5, gpt-oss-120b"
+            exit 1
+            ;;
+    esac
+}
+
 # Check if a file is fully downloaded (by size)
 check_file_complete() {
     local file="$1"
@@ -136,44 +191,39 @@ select_quant() {
     case "$QUANT" in
         UD-Q2_K_XL)
             MODEL_KIND="gguf"
-            MODEL_REPO="unsloth/MiniMax-M2.1-GGUF"
             MODEL_SUBDIR="UD-Q2_K_XL"
-            MODEL_NAME="MiniMax-M2.1-UD-Q2_K_XL"
-            MODEL_FILES=("${MODEL_FILES_UD[@]}")
-            MODEL_SIZES=("${MODEL_SIZES_UD[@]}")
-            OPENCODE_MODEL_ID="minimax-m2.1"
-            OPENCODE_MODEL_DISPLAY="MiniMax-M2.1 ($QUANT)"
+            MODEL_NAME="${MODEL_FILE_PREFIX}-${MODEL_SUBDIR}"
+            build_sharded_gguf_file_list "$MODEL_FILE_PREFIX" "$MODEL_SUBDIR" 2
+            # Only enforce known sizes for MiniMax-M2.1 UD-Q2_K_XL.
+            if [[ "$MODEL" == "minimax-m2.1" ]]; then
+                MODEL_SIZES=("${MODEL_SIZES_UD[@]}")
+            else
+                MODEL_SIZES=(0 0)
+            fi
+            OPENCODE_MODEL_DISPLAY="$MODEL_DISPLAY_BASE ($QUANT)"
             ;;
         UD-Q4_K_XL)
             MODEL_KIND="gguf"
-            MODEL_REPO="unsloth/MiniMax-M2.1-GGUF"
             MODEL_SUBDIR="UD-Q4_K_XL"
-            MODEL_NAME="MiniMax-M2.1-UD-Q4_K_XL"
-            MODEL_FILES=("${MODEL_FILES_UD_Q4_XL[@]}")
-            MODEL_SIZES=("${MODEL_SIZES_UD_Q4_XL[@]}")
-            OPENCODE_MODEL_ID="minimax-m2.1"
-            OPENCODE_MODEL_DISPLAY="MiniMax-M2.1 ($QUANT)"
+            MODEL_NAME="${MODEL_FILE_PREFIX}-${MODEL_SUBDIR}"
+            build_sharded_gguf_file_list "$MODEL_FILE_PREFIX" "$MODEL_SUBDIR" 3
+            MODEL_SIZES=(0 0 0)
+            OPENCODE_MODEL_DISPLAY="$MODEL_DISPLAY_BASE ($QUANT)"
             ;;
         UD-Q3_K_XL)
             MODEL_KIND="gguf"
-            MODEL_REPO="unsloth/MiniMax-M2.1-GGUF"
             MODEL_SUBDIR="UD-Q3_K_XL"
-            MODEL_NAME="MiniMax-M2.1-UD-Q3_K_XL"
-            MODEL_DIR_BASE="$HOME/models/minimax-m2.1"
-            MODEL_FILES=("${MODEL_FILES_UD_Q3_XL[@]}")
-            MODEL_SIZES=("${MODEL_SIZES_UD_Q3_XL[@]}")
-            OPENCODE_MODEL_ID="minimax-m2.1"
-            OPENCODE_MODEL_DISPLAY="MiniMax-M2.1 ($QUANT)"
+            MODEL_NAME="${MODEL_FILE_PREFIX}-${MODEL_SUBDIR}"
+            build_sharded_gguf_file_list "$MODEL_FILE_PREFIX" "$MODEL_SUBDIR" 3
+            MODEL_SIZES=(0 0 0)
+            OPENCODE_MODEL_DISPLAY="$MODEL_DISPLAY_BASE ($QUANT)"
             ;;
         GPT-OSS-120B)
             MODEL_KIND="gguf"
-            MODEL_REPO="unsloth/gpt-oss-120b-GGUF"
             MODEL_SUBDIR="UD-Q4_K_XL"
             MODEL_NAME="gpt-oss-120b-UD-Q4_K_XL"
-            MODEL_DIR_BASE="$HOME/models/gpt-oss"
             MODEL_FILES=("${MODEL_FILES_GPT_OSS_120B_UD_Q4_XL[@]}")
             MODEL_SIZES=("${MODEL_SIZES_GPT_OSS_120B_UD_Q4_XL[@]}")
-            OPENCODE_MODEL_ID="gpt-oss-120b"
             OPENCODE_MODEL_DISPLAY="gpt-oss-120b UD-Q4_K_XL"
             if ! $THINKING_MODE_SET; then
                 THINKING_MODE="high"
@@ -473,6 +523,8 @@ is_server_running() {
 launch_server() {
     log_info "=== Launching llama.cpp Server ==="
 
+    local server_log="/tmp/llama-server-${OPENCODE_MODEL_ID}.log"
+
     # Check if server is already running
     if is_server_running; then
         log_success "llama-server already running on port $SERVER_PORT"
@@ -526,6 +578,12 @@ launch_server() {
         tool_calling_args+=(--chat-template-file "$CHAT_TEMPLATE_FILE")
     fi
 
+    # Ensure the OpenAI-compatible `/v1/models` id matches what OpenCode sends.
+    local alias_args=()
+    if "$server_bin" --help 2>&1 | grep -q -- "--alias"; then
+        alias_args+=(--alias "$OPENCODE_MODEL_ID")
+    fi
+
     if [[ ${#LLAMA_SERVER_EXTRA_ARGS[@]} -gt 0 ]]; then
         log_info "  Extra llama-server args: ${LLAMA_SERVER_EXTRA_ARGS[*]}"
     fi
@@ -536,10 +594,11 @@ launch_server() {
         --port "$SERVER_PORT" \
         --ctx-size "$CTX_SIZE" \
         --n-gpu-layers 99 \
+        "${alias_args[@]}" \
         "${rpc_args[@]}" \
         "${tool_calling_args[@]}" \
         "${LLAMA_SERVER_EXTRA_ARGS[@]}" \
-        > /tmp/llama-server-minimax-m2.1.log 2>&1 &
+        > "$server_log" 2>&1 &
 
     local server_pid=$!
     echo "$server_pid" > /tmp/llama-server.pid
@@ -555,8 +614,8 @@ launch_server() {
 
         # Check if process died
         if ! kill -0 "$server_pid" 2>/dev/null; then
-            log_error "Server process died. Check /tmp/llama-server-minimax-m2.1.log"
-            tail -20 /tmp/llama-server-minimax-m2.1.log
+            log_error "Server process died. Check $server_log"
+            tail -20 "$server_log"
             return 1
         fi
 
@@ -712,7 +771,7 @@ test_inference() {
     local response=$(curl -s "http://localhost:$SERVER_PORT/v1/chat/completions" \
         -H 'Content-Type: application/json' \
         -d '{
-            "model": "minimax-m2.1",
+            "model": "'"$OPENCODE_MODEL_ID"'",
             "messages": [{"role": "user", "content": "Write a hello world function in Python."}],
             "max_tokens": 100,
             "temperature": '"$MODEL_TEMPERATURE"'
@@ -744,6 +803,10 @@ main() {
     # Parse arguments
     while [[ $# -gt 0 ]]; do
         case $1 in
+            --model)
+                MODEL="$2"
+                shift 2
+                ;;
             --download-only)
                 download_only=true
                 shift
@@ -806,9 +869,10 @@ main() {
             --help|-h)
                 echo "Usage: $0 [OPTIONS]"
                 echo
-                echo "Complete setup script for OpenCode + MiniMax-M2.1 on NVIDIA GPUs"
+                echo "Complete setup script for OpenCode + local GGUF models on NVIDIA GPUs"
                 echo
                 echo "Options:"
+                echo "  --model MODEL     Model family (minimax-m2.1, minimax-m2.5, gpt-oss-120b)"
                 echo "  --download-only   Only download model, build llama.cpp, and install OpenCode"
                 echo "  --launch-only     Only launch the server (assumes everything is installed)"
                 echo "  --status          Show current setup status"
@@ -820,12 +884,12 @@ main() {
                 echo "  --rpc-hosts CSV   Comma-separated list of rpc targets"
                 echo "  --chat-template-file PATH  Pass llama-server --chat-template-file"
                 echo "  --llama-arg ARG   Extra llama-server arg (repeatable)"
-                echo "  --quant QUANT     Model option (UD-Q2_K_XL, UD-Q3_K_XL, UD-Q4_K_XL, GPT-OSS-120B)"
+                echo "  --quant QUANT     Quant option (UD-Q2_K_XL, UD-Q3_K_XL, UD-Q4_K_XL, GPT-OSS-120B)"
                 echo "  --thinking MODE   Thinking preset (normal, high)"
                 echo "  --help            Show this help"
                 echo
                 echo "Without options, performs full setup:"
-                echo "  1. Download MiniMax-M2.1 model (~86GB)"
+                echo "  1. Download model"
                 echo "  2. Build llama.cpp with CUDA support (if not already built)"
                 echo "  3. Install OpenCode CLI"
                 echo "  4. Generate configuration (128K context)"
@@ -846,6 +910,12 @@ main() {
         esac
     done
 
+    # Back-compat: QUANT used as a model selector for GPT-OSS.
+    if [[ "$QUANT" == "GPT-OSS-120B" ]]; then
+        MODEL="gpt-oss-120b"
+    fi
+
+    select_model_family
     select_quant
 
     if $show_status_only; then
@@ -865,7 +935,7 @@ main() {
     fi
 
     echo "=============================================="
-    echo "  OpenCode + MiniMax-M2.1 Setup Script"
+    echo "  OpenCode + $MODEL_DISPLAY_BASE Setup Script"
     echo "=============================================="
     echo
 
@@ -905,7 +975,7 @@ main() {
     echo
     log_success "Setup complete!"
     echo
-    echo "To use OpenCode with MiniMax-M2.1:"
+    echo "To use OpenCode with $MODEL_DISPLAY_BASE:"
     echo "  1. Make sure the server is running:"
     echo "     ./setup-opencode-minimax.sh --launch-only"
     echo
@@ -919,7 +989,7 @@ main() {
     echo "Server details:"
     echo "  - Context size: 128K tokens"
     echo "  - Port: $SERVER_PORT"
-    echo "  - Model: MiniMax-M2.1 (228B params, 10B active)"
+    echo "  - Model: $MODEL_DISPLAY_BASE"
     echo
     echo "Check status anytime:"
     echo "  ./setup-opencode-minimax.sh --status"

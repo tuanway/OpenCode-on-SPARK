@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# shutdown.sh - Clean shutdown of MiniMax-M2.1 llama-server
+# shutdown.sh - Clean shutdown of local llama-server
 #
 
 set -e
@@ -19,7 +19,7 @@ log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 SERVER_PORT=8080
 RPC_PORT=50052
 
-echo "=== Shutting down MiniMax-M2.1 Server ==="
+echo "=== Shutting down llama-server ==="
 echo
 
 # Find and kill llama-server processes

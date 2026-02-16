@@ -39,7 +39,7 @@ Or use a comma-separated list:
 
 If the server does not start:
 ```bash
-tail -100 /tmp/llama-server-minimax-m2.1.log
+tail -100 /tmp/llama-server-minimax-m2.1.log   # or: /tmp/llama-server-minimax-m2.5.log
 ```
 
 If a worker RPC server fails:
